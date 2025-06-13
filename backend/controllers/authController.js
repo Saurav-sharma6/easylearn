@@ -49,3 +49,45 @@ exports.register = async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
+// ✅ NEW LOGIN FUNCTION BELOW
+
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Email Not Found' });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Password does not Match' });
+    }
+
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    // Send response with token
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Login failed' });
+  }
+};
