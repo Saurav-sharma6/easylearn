@@ -7,7 +7,7 @@ const bodyParser = require('body-parser');
 
 // Import routes
 
-const userRoutes = require('./routes/userRoutes');
+
 
 
 // Initialize Express app
@@ -27,7 +27,7 @@ mongoose.connect("mongodb+srv://asingh2513:Ig5XYOYcE1TAGz9d@cluster0.kbt2kws.mon
 
 // Routes
 
-app.use('/api/users', userRoutes);
+
 
 
 // Start server
