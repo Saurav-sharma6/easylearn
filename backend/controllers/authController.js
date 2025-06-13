@@ -50,7 +50,7 @@ exports.register = async (req, res) => {
   }
 };
 
-// ✅ NEW LOGIN FUNCTION BELOW
+//  NEW LOGIN FUNCTION BELOW
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
