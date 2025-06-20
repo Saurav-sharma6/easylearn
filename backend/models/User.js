@@ -21,6 +21,12 @@ const UserSchema = new Schema({
     enum: ['student', 'instructor','admin'],
     default: 'student',
   },
+  resetPasswordToken: {
+    type: String
+  },
+  resetPasswordExpires: {
+    type: Date
+  },
 }, {
   timestamps: true,
 });
