@@ -18,18 +18,104 @@ import axiosInstance from '../helpers/axiosInstance';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
 
+interface ValidationErrors {
+  email?: string;
+  password?: string;
+}
+
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [touched, setTouched] = useState({ email: false, password: false });
 
   const navigate = useNavigate();
 
+  // Email validation regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Validation functions
+  const validateEmail = (email: string): string => {
+    if (!email.trim()) {
+      return 'Email is required';
+    }
+    if (!emailRegex.test(email)) {
+      return 'Please enter a valid email address';
+    }
+    return '';
+  };
+
+  const validatePassword = (password: string): string => {
+    if (!password) {
+      return 'Password is required';
+    }
+    if (password.length < 6) {
+      return 'Password must be at least 6 characters long';
+    }
+    return '';
+  };
+
+  // Real-time validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    
+    if (touched.email) {
+      const emailError = validateEmail(value);
+      setValidationErrors(prev => ({ ...prev, email: emailError }));
+    }
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setPassword(value);
+    
+    if (touched.password) {
+      const passwordError = validatePassword(value);
+      setValidationErrors(prev => ({ ...prev, password: passwordError }));
+    }
+  };
+
+  // Handle field blur (when user leaves the field)
+  const handleEmailBlur = () => {
+    setTouched(prev => ({ ...prev, email: true }));
+    const emailError = validateEmail(email);
+    setValidationErrors(prev => ({ ...prev, email: emailError }));
+  };
+
+  const handlePasswordBlur = () => {
+    setTouched(prev => ({ ...prev, password: true }));
+    const passwordError = validatePassword(password);
+    setValidationErrors(prev => ({ ...prev, password: passwordError }));
+  };
+
+  // Validate entire form
+  const validateForm = (): boolean => {
+    const emailError = validateEmail(email);
+    const passwordError = validatePassword(password);
+
+    setValidationErrors({
+      email: emailError,
+      password: passwordError,
+    });
+
+    setTouched({ email: true, password: true });
+
+    return !emailError && !passwordError;
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+
+    // Validate form before submission
+    if (!validateForm()) {
+      return;
+    }
+
+    setLoading(true);
 
     try {
       // Send login request
@@ -76,6 +162,9 @@ const Login = () => {
     }
   };
 
+  // Check if form is valid for submit button
+  const isFormValid = !validationErrors.email && !validationErrors.password && email && password;
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -114,12 +203,15 @@ const Login = () => {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
+                  onBlur={handleEmailBlur}
                   fullWidth
                   required
                   placeholder="Enter your email"
                   variant="outlined"
                   size="small"
+                  error={touched.email && !!validationErrors.email}
+                  helperText={touched.email && validationErrors.email}
                   sx={{ mt: 1 }}
                 />
               </div>
@@ -133,12 +225,15 @@ const Login = () => {
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
+                  onBlur={handlePasswordBlur}
                   fullWidth
                   required
                   placeholder="Enter your password"
                   variant="outlined"
                   size="small"
+                  error={touched.password && !!validationErrors.password}
+                  helperText={touched.password && validationErrors.password}
                   sx={{ mt: 1 }}
                 />
               </div>
@@ -158,7 +253,7 @@ const Login = () => {
                 variant="contained"
                 color="primary"
                 fullWidth
-                disabled={loading}
+                disabled={loading || !isFormValid}
                 sx={{
                   mt: 2,
                   textTransform: 'none',
@@ -166,13 +261,14 @@ const Login = () => {
                   '&:hover': {
                     bgcolor: '#2563EB',
                   },
+                  '&:disabled': {
+                    bgcolor: '#9CA3AF',
+                  },
                 }}
               >
                 {loading ? 'Signing in...' : 'Sign in'}
               </Button>
             </form>
-
-           
           </CardContent>
         </Card>
       </div>
