@@ -6,6 +6,8 @@ import Home from './pages/Home';
 
 import Login from "./pages/Login.tsx"
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword.tsx';
+import ResetPassword from './pages/ResetPassword.tsx';
 
 // Material UI Components
 import { SnackbarProvider } from 'notistack'; // For global toast notifications
@@ -29,7 +31,8 @@ const App = () => (
             {/* Add more routes as needed */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
           </Routes>
         
       </BrowserRouter>

@@ -171,7 +171,7 @@ const Login = () => {
         <div className="text-center">
           <Link to="/" className="flex items-center justify-center space-x-2 mb-8">
             <BookOpen className="h-10 w-10 text-blue-600" />
-            <span className="text-2xl font-bold text-gray-900">SkillUp</span>
+            <span className="text-2xl font-bold text-gray-900">EasyLearn</span>
           </Link>
           <Typography variant="h5" component="h2" fontWeight="bold" color="textPrimary">
             Sign in to your account
