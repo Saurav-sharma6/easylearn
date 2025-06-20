@@ -91,3 +91,36 @@ exports.login = async (req, res) => {
     res.status(500).json({ message: 'Login failed' });
   }
 };
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'Email not found' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    const resetUrl = `http://localhost:5173/reset-password/${token}`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <body>
+        <h1>Reset Your Password</h1>
+        <p>Click <a href="${resetUrl}" target="_blank" style="color: #1a73e8; text-decoration: underline;">here</a> to reset your password. Link expires in 1 hour.</p>
+      </body>
+      </html>
+    `;
+    const text = `If the above link is not working, copy and paste the url to Reset your password at: ${resetUrl}`;
+    await sendEmail(email, 'Password Reset Request', html, text);
+
+    res.json({ message: 'Reset link sent to your email' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
