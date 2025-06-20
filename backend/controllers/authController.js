@@ -3,6 +3,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const crypto = require('crypto');
+const { sendEmail } = require('../utils/email');
 
 exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
@@ -95,6 +97,18 @@ exports.login = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email address is required' });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+    if (email.length > 100) {
+      return res.status(400).json({ message: 'Email address is too long' });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: 'Email not found' });
@@ -119,6 +133,57 @@ exports.forgotPassword = async (req, res) => {
     await sendEmail(email, 'Password Reset Request', html, text);
 
     res.json({ message: 'Reset link sent to your email' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // Validate password
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ message: 'Password must be less than 128 characters' });
+    }
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter' });
+    }
+    if (!/[a-z]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one lowercase letter' });
+    }
+    if (!/\d/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one number' });
+    }
+    if (!/[^A-Za-z0-9]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one special character' });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('Hashed password:', hashedPassword);
+    user.password = hashedPassword
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Password reset successful' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
