@@ -3,6 +3,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const crypto = require('crypto');
+const { sendEmail } = require('../utils/email');
 
 exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
@@ -129,6 +131,30 @@ exports.resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
+
+    // Validate password
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ message: 'Password must be less than 128 characters' });
+    }
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter' });
+    }
+    if (!/[a-z]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one lowercase letter' });
+    }
+    if (!/\d/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one number' });
+    }
+    if (!/[^A-Za-z0-9]/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one special character' });
+    }
+
     const user = await User.findOne({
       resetPasswordToken: token,
       resetPasswordExpires: { $gt: Date.now() },
