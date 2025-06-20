@@ -119,7 +119,7 @@ const Login = () => {
 
     try {
       // Send login request
-      const response = await axiosInstance.post('/api/auth/login', {
+      const response = await axiosInstance.post('/api/users/login', {
         email,
         password,
       });
