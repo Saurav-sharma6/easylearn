@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const {auth, adminMiddleware} = require('../middleware/authMiddleware');
 
 router.post('/register', authController.register); //register route
 router.post('/login', authController.login); // login route
