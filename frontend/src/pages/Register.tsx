@@ -281,7 +281,7 @@ const Register = () => {
     }
 
     try {
-      await axiosInstance.post("/api/auth/register", {
+      await axiosInstance.post("/api/users/register", {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
