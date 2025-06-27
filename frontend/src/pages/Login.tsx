@@ -123,18 +123,24 @@ const Login = () => {
         email,
         password,
       });
+      const { accessToken, refreshToken, user } = response.data;
 
-      const { token, user } = response.data;
-
-      // Save token and user data
-      localStorage.setItem('token', token);
+      // Save tokens and user data
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
       localStorage.setItem('user', JSON.stringify(user));
+
+      // Set session expiry (2 minutes from now)
+      const sessionExpiry = Date.now() + 2 * 60 * 1000;
+      localStorage.setItem('sessionExpiry', sessionExpiry.toString());
+
+      window.dispatchEvent(new Event('storage'));
 
       // Show success alert with navigation button
       Swal.fire({
         icon: 'success',
         title: 'Logged In!',
-        text: 'Welcome back to EasyLearn',
+        text: `Welcome back, ${user.name}!`,
         confirmButtonText: 'Dashboard',
         
       }).then((result) => {
