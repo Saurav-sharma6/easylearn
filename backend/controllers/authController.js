@@ -69,10 +69,9 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Password does not Match' });
     }
 
-    const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '1m' });
-    const refreshToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_REFRESH_SECRET, { expiresIn: '5m' });
+    const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '2h' });
+    const refreshToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_REFRESH_SECRET, { expiresIn: '2d' });
     user.refreshToken = refreshToken;
-    console.log("working till here....................")
     await user.save();
 
     // Set session data
@@ -138,7 +137,7 @@ exports.refreshToken = async (req, res) => {
 
     jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, (err, decoded) => {
       if (err) return res.status(403).json({ message: 'Invalid refresh token' });
-      const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '2m' });
+      const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '2h' });
       res.json({ accessToken });
     });
   } catch (error) {

@@ -33,7 +33,7 @@ app.use(morgan('dev'));
 const store = new MongoDBStore({
   uri: process.env.MONGO_URI ,
   collection: 'sessions',
-  ttl: 2 * 60, // 24 hours in seconds
+  ttl: 24 * 60 * 60, // 24 hours in seconds
   autoRemove: 'native' // Automatically remove expired sessions
 }, (error) => {
   if (error) console.error('MongoDBStore connection error:', error);
@@ -45,7 +45,7 @@ app.use(session({
   saveUninitialized: false,
   store: store,
   cookie: { 
-    maxAge: 2 * 60 * 1000, // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true,
     secure: false // process.env.NODE_ENV === 'development'
   }
