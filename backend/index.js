@@ -68,6 +68,7 @@ app.use('/api/users/forgot-password', forgotPasswordLimiter);
 
 // Routes
 app.use('/api/users', authRoutes);
+app.use('/api/courses', courseRoutes);
 
 // DB Connection
 const PORT = process.env.PORT || 5000;
