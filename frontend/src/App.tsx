@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import Home from './pages/Home';
+import CourseDetail from "./pages/CourseDetail.tsx";
 
 
 import Login from "./pages/Login.tsx"
@@ -29,12 +30,13 @@ const App = () => (
         
           <Routes>
             <Route path="/" element={<AppLayout />}>
-            <Route index element={<Home />} /> {/* 'index' for the root path */}
-            <Route path="login" element={<Login />} />
-            <Route path="register" element={<Register />} />
-            <Route path="forgot-password" element={<ForgotPassword />} />
-            <Route path="reset-password/:token" element={<ResetPassword />} />
-          </Route>
+              <Route index element={<Home />} /> {/* 'index' for the root path */}
+              <Route path="login" element={<Login />} />
+              <Route path="register" element={<Register />} />
+              <Route path="forgot-password" element={<ForgotPassword />} />
+              <Route path="reset-password/:token" element={<ResetPassword />} />
+              <Route path="/course/:id" element={<CourseDetail />} />
+            </Route>
           </Routes>
         
       </BrowserRouter>
