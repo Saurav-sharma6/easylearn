@@ -12,6 +12,7 @@ import ResetPassword from './pages/ResetPassword.tsx';
 // Material UI Components
 import { SnackbarProvider } from 'notistack'; // For global toast notifications
 import { ThemeProvider, createTheme } from '@mui/material/styles'; // Optional: for theme customization
+import AppLayout from './components/AppLayout.tsx';
 
 const theme = createTheme({
   palette: {
@@ -27,12 +28,13 @@ const App = () => (
       <BrowserRouter>
         
           <Routes>
-            <Route path="/" element={<Home />} />
-            {/* Add more routes as needed */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/" element={<AppLayout />}>
+            <Route index element={<Home />} /> {/* 'index' for the root path */}
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password/:token" element={<ResetPassword />} />
+          </Route>
           </Routes>
         
       </BrowserRouter>
