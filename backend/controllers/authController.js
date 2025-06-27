@@ -56,7 +56,6 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-
   try {
     // Find user by email
     const user = await User.findOne({ email });
@@ -70,16 +69,26 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Password does not Match' });
     }
 
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1d' }
-    );
+    const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '2h' });
+    const refreshToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_REFRESH_SECRET, { expiresIn: '2d' });
+    user.refreshToken = refreshToken;
+    await user.save();
 
+    // Set session data
+    if (req.session) {
+      req.session.userId = user._id.toString();
+      req.session.role = user.role;
+      await new Promise((resolve) => req.session.save(resolve)); // to save the session
+      console.log('Session saved:', req.session);
+      
+    } else {
+      console.error('req.session is undefined');
+    }
+    
     // Send response with token
     res.json({
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user._id,
         name: user.name,
@@ -91,6 +100,49 @@ exports.login = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Login failed' });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    const refreshToken = req.body.refreshToken || req.session?.refreshToken;
+    if (!refreshToken) return res.status(400).json({ message: 'Refresh token required' });
+
+    const user = await User.findOne({ refreshToken });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    user.refreshToken = null;
+    await user.save();
+
+    if (req.session) {
+      req.session.destroy(err => {
+        if (err) console.error('Session destroy error:', err);
+      });
+    }
+    
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Logout failed' });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ message: 'Refresh token required' });
+
+  try {
+    const user = await User.findOne({ refreshToken });
+    if (!user) return res.status(403).json({ message: 'Invalid refresh token' });
+
+    jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, (err, decoded) => {
+      if (err) return res.status(403).json({ message: 'Invalid refresh token' });
+      const accessToken = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_ACCESS_SECRET, { expiresIn: '2h' });
+      res.json({ accessToken });
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Token refresh failed' });
   }
 };
 

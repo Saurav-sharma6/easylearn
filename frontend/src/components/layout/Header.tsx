@@ -7,6 +7,9 @@ import Button from '@mui/material/Button';
 import InputBase from '@mui/material/InputBase';
 import Avatar from '@mui/material/Avatar';
 
+// Axios Instance
+import axiosInstance from '../../helpers/axiosInstance';
+
 interface User {
   name: string;
   role: 'student' | 'instructor' | 'admin';
@@ -28,15 +31,39 @@ const Header = () => {
         console.error("Failed to parse user from localStorage");
       }
     }
+
+  // Listen for storage changes (e.g., from other tabs or logout)
+    const handleStorageChange = () => {
+      const updatedUser = localStorage.getItem('user');
+      // console.log('Storage changed, updating user:', updatedUser); // Debug
+      if (!updatedUser) {
+        setUser(null); // Update state if user is cleared
+      } else {
+        try {
+          setUser(JSON.parse(updatedUser));
+        } catch (err) {
+          console.error('Failed to parse updated user');
+          setUser(null);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    navigate('/');
-    window.location.reload(); // Force re-render to update header
-  };
+  const handleLogout = async () => {
+  try {
+    const refreshToken = localStorage.getItem('refreshToken');
+    await axiosInstance.post('/api/users/logout', {refreshToken}); // Backend endpoint to invalidate token
+  } catch (err) {
+    console.error('Logout failed:', err);
+  }
+  localStorage.clear();
+  document.cookie = 'connect.sid=; Max-Age=0; path=/'; // Clear session cookie (optional)
+  setUser(null);
+  navigate('/');
+};
 
   return (
     <header className="bg-white shadow-sm border-b">
