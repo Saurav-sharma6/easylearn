@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import Home from './pages/Home';
+import CourseDetail from "./pages/CourseDetail.tsx";
 
 
 import Login from "./pages/Login.tsx"
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/course/:id" element={<CourseDetail />} />
           </Routes>
         
       </BrowserRouter>
