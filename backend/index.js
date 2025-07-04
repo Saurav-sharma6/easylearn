@@ -11,6 +11,8 @@ const MongoDBStore = require('connect-mongodb-session')(session);
 const authRoutes = require('./routes/authRoutes');
 const connectDB = require('./config/db');
 const userRoutes = require('./routes/authRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
@@ -69,6 +71,7 @@ app.use('/api/users/forgot-password', forgotPasswordLimiter);
 // Routes
 app.use('/api/users', authRoutes);
 app.use('/api/courses', courseRoutes);
+app.use('/api/admin', adminRoutes);
 
 // DB Connection
 const PORT = process.env.PORT || 5000;
