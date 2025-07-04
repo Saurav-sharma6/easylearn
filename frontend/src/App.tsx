@@ -12,6 +12,8 @@ import InstructorDashboard from "./pages/InstructorDashboard.tsx";
 // Material UI Components
 import { SnackbarProvider } from "notistack"; // For global toast notifications
 import { ThemeProvider, createTheme } from "@mui/material/styles"; // Optional: for theme customization
+import AppLayout from "./components/AppLayout.tsx";
+import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
 
 const theme = createTheme({
   palette: {
@@ -26,8 +28,8 @@ const App = () => (
     <SnackbarProvider maxSnack={3} autoHideDuration={3000}>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<AppLayout />}>
           <Route path="/" element={<Home />} />
-          {/* Add more routes as needed */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -39,6 +41,8 @@ const App = () => (
             path="/instructor/dashboard"
             element={<InstructorDashboard />}
           />
+          <Route path="/admin/dashboard" element={<AdminDashboard />}/>
+          </Route>
         </Routes>
       </BrowserRouter>
     </SnackbarProvider>

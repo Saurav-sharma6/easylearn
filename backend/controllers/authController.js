@@ -245,10 +245,46 @@ exports.resetPassword = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find().select('_id name email role');
-    res.json(users);
+    const { search, sort, limit = 5, page = 1 } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = User.find().select('_id name email role');
+    if (search) {
+      query = query.where({
+        $or: [
+          { name: new RegExp(search, 'i') },
+          { email: new RegExp(search, 'i') },
+          { role: new RegExp(search, 'i') },
+        ],
+      }); // Case-insensitive search by name
+    }
+
+    const total = await User.countDocuments(query);
+    const users = await query
+      .sort(sort ? { [sort.replace('-', '')]: sort.startsWith('-') ? -1 : 1 } : { name: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+      
+
+    res.json({
+      users,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
+};
+
+exports.getUserCount = async (req, res) => {
+  console.log("HERE")
+  try {
+    const count = await User.countDocuments();
+    res.json({ totalUsers: count });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
 };

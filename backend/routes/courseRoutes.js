@@ -1,10 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/courseController');
+const {authenticateToken, roleMiddleware} = require('../middleware/auth');
+
+
+router.get('/count', [authenticateToken, roleMiddleware(['instructor', 'admin'])], courseController.getCourseCount);
 
 // GET /api/courses/:id
 router.get('/:id', courseController.getCourseById);
-
+// [authenticateToken, roleMiddleware(['instructor', 'admin'])]
 // POST /api/courses
 router.post('/', courseController.createCourse);
 
