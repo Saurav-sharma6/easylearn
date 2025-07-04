@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create an axios instance
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:5000", // Replace with your backend API base URL
+  baseURL: "http://localhost:5000",
   withCredentials: true, // enabling sending cookies for session
 });
 
@@ -22,6 +22,7 @@ const onRefreshed = (token: string) => {
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token"); // Retrieve the token from localStorage
+    console.log(token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`; // Add the token to the Authorization header
     }

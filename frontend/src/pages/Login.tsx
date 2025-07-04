@@ -131,7 +131,7 @@ const Login = () => {
       localStorage.setItem('user', JSON.stringify(user));
 
       // Set session expiry (2 minutes from now)
-      const sessionExpiry = Date.now() + 2 * 60 * 1000;
+      const sessionExpiry = Date.now() + 2 * 60 * 60 * 1000;
       localStorage.setItem('sessionExpiry', sessionExpiry.toString());
 
       window.dispatchEvent(new Event('storage'));
