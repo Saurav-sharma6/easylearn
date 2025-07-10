@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const Chapter = require('./Chapter');
 
 const CourseSchema = new Schema({
   title: {
@@ -16,9 +17,9 @@ const CourseSchema = new Schema({
     required: true,
     trim: true,
   },
-  instructorId: { //New field – reference to Instructor._id
+  instructorId: {
     type: Schema.Types.ObjectId,
-    ref: 'Instructor',
+    ref: 'User', // Reference User model instead of Instructor
     required: true,
   },
   price: {
@@ -58,10 +59,12 @@ const CourseSchema = new Schema({
     enum: ['Beginner', 'Intermediate', 'Advanced'],
     default: 'Beginner',
   },
-  isEnrolled: {
-    type: Boolean,
-    default: false,
-  },
+  whatWillLearn: [
+    {
+      type: String,
+      trim: true,
+    },
+  ],
   isFeatured: {
     type: Boolean,
     default: false,
@@ -70,6 +73,12 @@ const CourseSchema = new Schema({
     type: Boolean,
     default: false,
   },
+  curriculum: [
+    {
+      type: Schema.Types.ObjectId,
+      ref: 'Chapter',
+    },
+  ],
 });
 
 module.exports = mongoose.model('Course', CourseSchema);
