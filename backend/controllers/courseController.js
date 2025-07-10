@@ -3,6 +3,16 @@ const Course = require('../models/Course');
 // GET /api/courses - Get all courses
 exports.getAllCourses = async (req, res) => {
   try {
+    const courses = await Course.find();
+    res.json({ courses });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error fetching courses' });
+  }
+};
+
+exports.getAllCoursesAdmin = async (req, res) => {
+  try {
     const { search, sort, limit = 5, page = 1 } = req.query;
     const skip = (page - 1) * limit;
 

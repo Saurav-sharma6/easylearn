@@ -5,6 +5,8 @@ const {authenticateToken, roleMiddleware} = require('../middleware/auth');
 
 
 router.get('/count', [authenticateToken, roleMiddleware(['instructor', 'admin'])], courseController.getCourseCount);
+router.get('/list', [authenticateToken, roleMiddleware(['instructor', 'admin'])], courseController.getAllCoursesAdmin);
+
 
 // GET /api/courses/:id
 router.get('/:id', courseController.getCourseById);

@@ -38,8 +38,8 @@ const AdminDashboard = () => {
           console.log('Fetched analytics:', staticAnalytics);
           setAnalytics(staticAnalytics);
 
-          console.log('Fetching courses from:', '/api/courses/');
-          const coursesInfo = await axiosInstance.get('/api/courses/');
+          console.log('Fetching courses from:', '/api/courses/list');
+          const coursesInfo = await axiosInstance.get('/api/courses/list');
           console.log('Raw Courses response:', coursesInfo.data);
           const coursesData = Array.isArray(coursesInfo.data) ? coursesInfo.data : coursesInfo.data.courses || [];
           setCourses(coursesData);
@@ -58,8 +58,8 @@ const AdminDashboard = () => {
             setUsers([]);
           }
         } else if (activeTab === 'Course Management') {
-          console.log('Fetching courses from:', '/api/courses/');
-          const coursesResponse = await axiosInstance.get('/api/courses/');
+          console.log('Fetching courses from:', '/api/courses/list');
+          const coursesResponse = await axiosInstance.get('/api/courses/list');
           console.log('Raw Courses response:', coursesResponse.data);
           const coursesData = Array.isArray(coursesResponse.data) ? coursesResponse.data : coursesResponse.data.courses || [];
           setCourses(coursesData);
@@ -101,7 +101,7 @@ const AdminDashboard = () => {
 const handleDeleteCourse = async (courseId) => {
   try {
     await axiosInstance.delete(`/api/courses/${courseId}`);
-    const coursesResponse = await axiosInstance.get('/api/courses', {
+    const coursesResponse = await axiosInstance.get('/api/courses/list', {
       params: { sort: 'title', limit: 5, page: 1 }, // Reset to first page
     });
     setCourses(coursesResponse.data.courses || []);
