@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const connectDB = async () => {
   try {
+    
     await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
       maxPoolSize: 10
