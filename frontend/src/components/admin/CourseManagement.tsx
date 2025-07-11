@@ -17,7 +17,7 @@ const CourseManagement = ({ onDeleteCourse }) => {
     const fetchCourses = async () => {
       setLoading(true);
       try {
-        const response = await axiosInstance.get('/api/courses', {
+        const response = await axiosInstance.get('/api/courses/list/', {
           params: { search, sort: sort || undefined, limit, page },
         });
         setCourses(response.data.courses || []);
@@ -44,7 +44,7 @@ const CourseManagement = ({ onDeleteCourse }) => {
   const handleDelete = async (courseId) => {
     try {
       await onDeleteCourse(courseId);
-      const response = await axiosInstance.get('/api/courses', {
+      const response = await axiosInstance.get('/api/courses/list/', {
         params: { search, sort, limit, page },
       });
       setCourses(response.data.courses || []);
