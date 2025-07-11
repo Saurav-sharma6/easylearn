@@ -1,9 +1,4 @@
-const mongoose = require("mongoose");
-const Course = require("../models/Course");
-const User = require("../models/User");
-const Chapter = require("../models/Chapter");
-const Lecture = require("../models/Lecture");
-
+const Course = require('../models/Course');
 
 // POST /api/courses
 exports.createCourse = async (req, res) => {
@@ -87,7 +82,7 @@ exports.createCourse = async (req, res) => {
 
     await course.save();
 
-    // ✅ Fully populate instructor and curriculum + nested lectures
+    // Fully populate instructor and curriculum + nested lectures
     const populatedCourse = await Course.findById(course._id)
       .populate("instructorId", "name email")
       .populate({
@@ -98,7 +93,7 @@ exports.createCourse = async (req, res) => {
         },
       });
 
-    // ✅ Return full populated result
+    // Return full populated result
     return res.status(201).json({
       message: "Course created successfully",
       course: populatedCourse,
@@ -277,5 +272,45 @@ exports.getChapterById = async (req, res) => {
   } catch (err) {
     console.error("Error fetching chapter:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.getAllCoursesAdmin = async (req, res) => {
+  try {
+    const { search, sort, limit = 5, page = 1 } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = Course.find().select('title price originalPrice instructorId');
+    if (search) {
+      query = query.where('title', new RegExp(search, 'i')); // Search by title
+    }
+
+    const total = await Course.countDocuments(query);
+    const courses = await query
+      .sort(sort ? { [sort.replace('-', '')]: sort.startsWith('-') ? -1 : 1 } : { title: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.json({
+      courses,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error fetching courses' });
+  }
+};
+
+
+// count the course
+exports.getCourseCount = async (req, res) => {
+  try {
+    const count = await Course.countDocuments();
+    res.json({ totalCourses: count });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
