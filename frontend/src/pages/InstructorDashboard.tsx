@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
 import axiosInstance from "../helpers/axiosInstance";
-
-// Import the configured axios instance
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
@@ -17,6 +15,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import { useNavigate } from "react-router-dom";
+
 
 // Course interface
 interface Course {
@@ -96,6 +95,16 @@ const InstructorDashboard = () => {
     isPreviewFree: false,
   });
 
+  // Predefined categories
+  const categories = [
+    "Web Development",
+    "Programming",
+    "Design",
+    "Backend Development",
+    "Data Science",
+    "Mobile Development",
+  ];
+
   // Load user from localStorage
   useEffect(() => {
     const userData = localStorage.getItem("user");
@@ -111,50 +120,20 @@ const InstructorDashboard = () => {
   // Load courses for current instructor
   useEffect(() => {
     const fetchCourses = async () => {
-      console.log("[InstructorDashboard] Fetching courses...");
       try {
         const userData = localStorage.getItem("user");
-        if (!userData) {
-          console.warn("No user data found in localStorage");
-          return;
-        }
+        if (!userData) return;
 
         const user = JSON.parse(userData);
         const instructorId = user.id;
-
-        console.log(
-          "[InstructorDashboard] Fetching courses for instructor ID:",
-          instructorId
-        );
 
         const response = await axiosInstance.get(
           `/api/courses/instructor/${instructorId}`
         );
 
-        console.log(
-          "[InstructorDashboard] Courses fetched successfully:",
-          response.data.courses
-        );
-
         setCourses(response.data.courses || []);
       } catch (error: any) {
-        if (error.response) {
-          console.error(
-            "[InstructorDashboard] Server responded with error:",
-            error.response.status,
-            error.response.data
-          );
-        } else if (error.request) {
-          console.error(
-            "[InstructorDashboard] No response received:",
-            error.request
-          );
-        } else {
-          console.error(
-            "[InstructorDashboard] Unexpected error:",
-            error.message
-          );
-        }
+        console.error("Error fetching courses:", error.message);
       }
     };
 
@@ -164,10 +143,12 @@ const InstructorDashboard = () => {
   // Submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     const userData = localStorage.getItem("user");
     const user = userData ? JSON.parse(userData) : null;
     const instructorName = user?.name || "Jane Doe";
     const instructorId = formData.instructorId || user?.id;
+
     if (!instructorId) {
       alert("Instructor ID is required.");
       return;
@@ -201,13 +182,6 @@ const InstructorDashboard = () => {
         },
       });
 
-      console.log(
-        `[InstructorDashboard] Course ${
-          method === "PUT" ? "updated" : "created"
-        }:`,
-        response.data.course
-      );
-
       if (editingCourse) {
         setCourses(
           courses.map((c) =>
@@ -237,16 +211,7 @@ const InstructorDashboard = () => {
       setChapters([]);
       setShowCreateForm(false);
     } catch (err: any) {
-      if (err.response) {
-        console.error(
-          "[InstructorDashboard] Submission failed - server response:",
-          err.response.data
-        );
-        alert(err.response.data.error || "Something went wrong");
-      } else {
-        console.error("[InstructorDashboard] Submission error:", err.message);
-        alert("An unexpected error occurred.");
-      }
+      alert(err.response?.data?.error || "Something went wrong");
     }
   };
 
@@ -272,16 +237,10 @@ const InstructorDashboard = () => {
 
   const handleDelete = async (courseId: string) => {
     if (!window.confirm("Are you sure you want to delete this course?")) return;
-
     try {
       await axiosInstance.delete(`/api/courses/${courseId}`);
-      console.log(`[InstructorDashboard] Course deleted: ${courseId}`);
       setCourses(courses.filter((c) => c._id !== courseId));
     } catch (err: any) {
-      console.error(
-        "[InstructorDashboard] Failed to delete course:",
-        err.message
-      );
       alert("Failed to delete course");
     }
   };
@@ -334,13 +293,9 @@ const InstructorDashboard = () => {
       alert("Please enter a valid lecture title");
       return;
     }
-
     const updatedChapters = [...chapters];
     updatedChapters[currentChapterIndex!].chapterContent.push(lectureDetails);
     setChapters(updatedChapters);
-
-    console.log("[InstructorDashboard] Lecture added:", lectureDetails);
-
     setLectureDetails({
       lectureTitle: "",
       lectureDuration: "",
@@ -418,13 +373,13 @@ const InstructorDashboard = () => {
           <Card className="p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow">
             <Typography color="textSecondary">Total Earnings</Typography>
             <Typography variant="h5" fontWeight="bold" color="success.main">
-              {/* ${totalEarnings.toLocaleString()} */}
+              $0.00
             </Typography>
           </Card>
           <Card className="p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow">
             <Typography color="textSecondary">Total Students</Typography>
             <Typography variant="h5" fontWeight="bold" color="info.main">
-              {/* {totalStudents.toLocaleString()} */}
+              0
             </Typography>
           </Card>
           <Card className="p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow">
@@ -468,6 +423,7 @@ const InstructorDashboard = () => {
                 required
                 sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
               />
+
               {/* Price Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TextField
@@ -489,7 +445,7 @@ const InstructorDashboard = () => {
                 <TextField
                   type="number"
                   label="Discounted Price ($)"
-                  value={formData.price}
+                  value={formData.price ?? ""}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
@@ -502,18 +458,28 @@ const InstructorDashboard = () => {
                   sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
                 />
               </div>
+
               {/* Category & Level & Duration */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <TextField
+                  select
                   label="Category"
                   value={formData.category}
                   onChange={(e) =>
                     setFormData({ ...formData, category: e.target.value })
                   }
                   margin="normal"
+                  fullWidth
                   required
                   sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
-                />
+                >
+                  {categories.map((category) => (
+                    <MenuItem key={category} value={category}>
+                      {category}
+                    </MenuItem>
+                  ))}
+                </TextField>
+
                 <TextField
                   select
                   label="Level"
@@ -535,6 +501,7 @@ const InstructorDashboard = () => {
                   <MenuItem value="Intermediate">Intermediate</MenuItem>
                   <MenuItem value="Advanced">Advanced</MenuItem>
                 </TextField>
+
                 <TextField
                   fullWidth
                   label="Duration (e.g., 10 hours)"
@@ -547,6 +514,7 @@ const InstructorDashboard = () => {
                   sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
                 />
               </div>
+
               {/* Image Upload */}
               <TextField
                 fullWidth
@@ -559,6 +527,7 @@ const InstructorDashboard = () => {
                 required
                 sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
               />
+
               {/* What Will Learn */}
               <div className="mt-4">
                 <Typography variant="subtitle2" gutterBottom>
@@ -616,6 +585,7 @@ const InstructorDashboard = () => {
                   + Add Learning Point
                 </Button>
               </div>
+
               {/* Checkboxes */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
@@ -657,6 +627,7 @@ const InstructorDashboard = () => {
                   </label>
                 </div>
               </div>
+
               {/* Curriculum Section */}
               <div className="mt-6">
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
@@ -771,6 +742,7 @@ const InstructorDashboard = () => {
                   </div>
                 </div>
               </div>
+
               {/* Action Buttons */}
               <div className="flex gap-4 mt-4">
                 <Button
