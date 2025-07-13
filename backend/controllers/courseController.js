@@ -1,4 +1,5 @@
 const Course = require('../models/Course');
+const mongoose = require('mongoose');
 
 // POST /api/courses
 exports.createCourse = async (req, res) => {
