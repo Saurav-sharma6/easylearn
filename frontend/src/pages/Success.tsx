@@ -1,18 +1,32 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle"; // Optional: You can use any icon here
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import axiosInstance from "../helpers/axiosInstance";
 
 const Success = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const sessionId = new URLSearchParams(location.search).get("session_id");
+    const confirmPayment = async () => {
+      const sessionId = new URLSearchParams(location.search).get("session_id");
 
-    if (sessionId) {
-      console.log("Payment successful. Session ID:", sessionId);
-      // Optionally call your backend here to confirm and update DB
-    }
+      if (sessionId) {
+        try {
+          console.log("Confirming payment with session ID:", sessionId);
+          const response = await axiosInstance.post("/api/payment/confirm", {
+            sessionId,
+          });
+          console.log("Payment confirmation response:", response.data);
+          alert("Enrollment confirmed! You now have access to the course.");
+        } catch (error) {
+          console.error("Payment confirmation error:", error);
+          alert("Failed to confirm enrollment. Please contact support.");
+        }
+      }
+    };
+
+    confirmPayment();
   }, [location]);
 
   return (
@@ -28,10 +42,10 @@ const Success = () => {
           Thank you for enrolling. You now have full access to the course.
         </p>
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/")} // Redirect to user dashboard or course page
           className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
         >
-          Go to Homepage
+          Go to Dashboard
         </button>
       </div>
     </div>
