@@ -2,7 +2,6 @@
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
-const webhookRoutes = require("./routes/webhook");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -11,11 +10,12 @@ const session = require("express-session");
 const MongoDBStore = require("connect-mongodb-session")(session);
 const authRoutes = require("./routes/authRoutes");
 const connectDB = require("./config/db");
-const userRoutes = require("./routes/authRoutes");
 const courseRoutes = require("./routes/courseRoutes");
 // const adminRoutes = require("./routes/adminRoutes");
 const stripeRoutes = require("./routes/stripe");
+const webhookRoutes = require("./routes/webhook");
 const contactRoutes = require("./routes/contact");
+const enrollmentRoutes = require("./routes/enrollmentRoutes");
 
 const app = express();
 
@@ -23,7 +23,7 @@ const app = express();
 const corsOptions = {
   origin: "http://localhost:5173",
   credentials: true, // Allow cookies/credentials to be sent
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Allow all necessary methods
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], // Allow all necessary methods
   allowedHeaders: ["Authorization", "Content-Type"], // Allow relevant headers
 };
 
@@ -83,6 +83,8 @@ app.use("/api/users", authRoutes);
 app.use("/api/courses", courseRoutes);
 // app.use("/api/admin", adminRoutes);
 app.use("/api/payment", stripeRoutes);
+app.use("/api/payment/webhook", webhookRoutes);
+app.use("/api/enrollments", enrollmentRoutes);
 
 // DB Connection
 const PORT = process.env.PORT || 5000;

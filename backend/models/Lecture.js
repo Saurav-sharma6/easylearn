@@ -5,17 +5,14 @@ const LectureSchema = new Schema({
   lectureTitle: {
     type: String,
     required: true,
-    trim: true,
   },
   lectureDuration: {
     type: String,
     required: true,
-    trim: true,
   },
   lectureUrl: {
     type: String,
     required: true,
-    trim: true,
   },
   isPreviewFree: {
     type: Boolean,

@@ -1,4 +1,9 @@
 const Course = require('../models/Course');
+const User = require('../models/User');
+const Lecture = require('../models/Lecture');
+const Chapter = require('../models/Chapter');
+const cloudinary = require('../config/cloudinaryConfig');
+const mongoose = require('mongoose');
 
 // POST /api/courses
 exports.createCourse = async (req, res) => {
@@ -7,6 +12,7 @@ exports.createCourse = async (req, res) => {
       title,
       description,
       instructorId,
+      instructor,
       price,
       originalPrice,
       duration,
@@ -16,94 +22,93 @@ exports.createCourse = async (req, res) => {
       whatWillLearn,
       isFeatured,
       isPopular,
-      curriculum, // array of chapters with lecture info
+      curriculum,
     } = req.body;
 
-    // Validation
-    if (!title || !instructorId || !duration || !image) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!instructorId || !mongoose.isValidObjectId(instructorId)) {
+      return res.status(400).json({ error: "Invalid instructor ID" });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(instructorId)) {
-      return res.status(400).json({ error: "Invalid instructorId" });
+    const parsedCurriculum = JSON.parse(curriculum || "[]");
+    const files = req.files ? (Array.isArray(req.files.lectureVideos) ? req.files.lectureVideos : [req.files.lectureVideos]) : [];
+
+    let expectedVideos = 0;
+    parsedCurriculum.forEach((chapter) => {
+      expectedVideos += chapter.chapterContent.length;
+    });
+
+    if (files.length !== expectedVideos) {
+      return res.status(400).json({
+        error: `Expected ${expectedVideos} video files, but received ${files.length}`,
+      });
     }
 
-    const instructorUser = await User.findById(instructorId);
-    if (!instructorUser || instructorUser.role !== "instructor") {
-      return res
-        .status(403)
-        .json({ error: "Only instructors can create courses" });
-    }
-
-    // Process Chapters and Lectures
-    const chapterIds = [];
-
-    for (const chapter of curriculum) {
+    let fileIndex = 0;
+    const newChapters = [];
+    for (const chapter of parsedCurriculum) {
       const lectureIds = [];
+      for (const lecture of chapter.chapterContent) {
+        const file = files[fileIndex];
+        if (!file) {
+          return res.status(400).json({ error: "Missing video file for lecture" });
+        }
+        try {
+          const uploadResult = await cloudinary.uploader.upload_stream(
+            { resource_type: "video", folder: "easylearn/lectures" },
+            (error, result) => {
+              if (error) throw error;
+              return result;
+            }
+          ).end(file.buffer);
+          const lectureUrl = uploadResult.secure_url;
+          fileIndex++;
 
-      for (const lecture of chapter.chapterContent || []) {
-        const newLecture = new Lecture({
-          lectureTitle: lecture.lectureTitle,
-          lectureDuration: lecture.lectureDuration,
-          lectureUrl: lecture.lectureUrl,
-          isPreviewFree: lecture.isPreviewFree || false,
-        });
-
-        await newLecture.save();
-        lectureIds.push(newLecture._id);
+          const newLecture = new Lecture({
+            lectureTitle: lecture.lectureTitle,
+            lectureDuration: lecture.lectureDuration,
+            lectureUrl,
+            isPreviewFree: lecture.isPreviewFree || false,
+          });
+          await newLecture.save();
+          lectureIds.push(newLecture._id);
+        } catch (error) {
+          console.error("Cloudinary upload error:", error);
+          return res.status(500).json({ error: "Failed to upload video to Cloudinary" });
+        }
       }
 
       const newChapter = new Chapter({
         chapterTitle: chapter.chapterTitle,
         chapterContent: lectureIds,
       });
-
       await newChapter.save();
-      chapterIds.push(newChapter._id);
+      newChapters.push(newChapter._id);
     }
 
-    // Create Course
-    const course = new Course({
+    const newCourse = new Course({
       title,
       description,
-      instructor: instructorUser.name,
-      instructorId: instructorUser._id,
-      price: parseFloat(price),
+      instructor,
+      instructorId,
+      price: parseFloat(price) || 0,
       originalPrice: originalPrice ? parseFloat(originalPrice) : null,
       duration,
-      image,
+      image: image || "/placeholder.svg",
       category,
       level,
-      whatWillLearn,
-      isFeatured,
-      isPopular,
-      curriculum: chapterIds,
+      whatWillLearn: JSON.parse(whatWillLearn || "[]"),
+      isFeatured: isFeatured === "true",
+      isPopular: isPopular === "true",
+      curriculum: newChapters,
     });
 
-    await course.save();
-
-    // Fully populate instructor and curriculum + nested lectures
-    const populatedCourse = await Course.findById(course._id)
-      .populate("instructorId", "name email")
-      .populate({
-        path: "curriculum",
-        populate: {
-          path: "chapterContent",
-          model: "Lecture",
-        },
-      });
-
-    // Return full populated result
-    return res.status(201).json({
-      message: "Course created successfully",
-      course: populatedCourse,
-    });
-  } catch (err) {
-    console.error("Error creating course:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    await newCourse.save();
+    res.status(201).json({ course: newCourse });
+  } catch (error) {
+    console.error("Error creating course:", error);
+    res.status(500).json({ error: "Failed to create course" });
   }
 };
-
 
 // GET /api/courses
 exports.getAllCourses = async (req, res) => {
@@ -151,57 +156,252 @@ exports.getCourseById = async (req, res) => {
   }
 };
 
-
-
 // PUT /api/courses/:id
 exports.updateCourse = async (req, res) => {
   try {
     const courseId = req.params.id;
-    const updateData = req.body;
+    const {
+      title,
+      description,
+      instructorId,
+      instructor,
+      price,
+      originalPrice,
+      duration,
+      image,
+      category,
+      level,
+      whatWillLearn,
+      isFeatured,
+      isPopular,
+      curriculum,
+    } = req.body;
 
-    // If updating instructorId, validate it again
-    if (updateData.instructorId) {
-      const instructorUser = await User.findById(updateData.instructorId);
-      if (!instructorUser || instructorUser.role !== "instructor") {
-        return res.status(403).json({ error: "Invalid instructor ID" });
-      }
-
-      updateData.instructor = instructorUser.name;
-      updateData.instructorId = instructorUser._id;
+    console.log("Received courseId:", courseId);
+    console.log("Received instructorId:", instructorId);
+    if (!mongoose.isValidObjectId(courseId)) {
+      return res.status(400).json({ error: "Invalid course ID" });
+    }
+    if (!instructorId || !mongoose.isValidObjectId(instructorId)) {
+      return res.status(400).json({ error: "Invalid instructor ID" });
     }
 
-    // Handle price parsing if provided
-    if (updateData.price !== undefined) {
-      const parsedPrice = parseFloat(updateData.price);
-      if (isNaN(parsedPrice)) {
-        return res.status(400).json({ error: "Invalid price value" });
-      }
-      updateData.price = parsedPrice;
+    const parsedCurriculum = JSON.parse(curriculum || "[]");
+    console.log("Parsed curriculum:", parsedCurriculum);
+    const files = req.files ? (Array.isArray(req.files) ? req.files : req.files.lectureVideos || []) : [];
+    console.log("FILES:", files);
+
+    const existingCourse = await Course.findById(courseId).populate({
+      path: "curriculum",
+      populate: { path: "chapterContent" },
+    });
+    if (!existingCourse) {
+      return res.status(404).json({ error: "Course not found" });
     }
 
-    if (updateData.originalPrice !== undefined) {
-      const parsedOriginalPrice = updateData.originalPrice
-        ? parseFloat(updateData.originalPrice)
-        : null;
-      if (parsedOriginalPrice !== null && isNaN(parsedOriginalPrice)) {
-        return res.status(400).json({ error: "Invalid original price value" });
+    const newChapters = [];
+    let fileIndex = 0;
+    for (const chapter of parsedCurriculum) {
+      const lectureIds = [];
+      for (const lecture of chapter.chapterContent) {
+        let lectureUrl = lecture.lectureUrl;
+        let lectureId = lecture._id;
+
+        if (lecture.videoFile === true) {
+          if (fileIndex >= files.length) {
+            console.warn(`No file provided for lecture: ${lecture.lectureTitle}, preserving existing URL if available`);
+            if (lectureId && lectureUrl) {
+              const existingLecture = await Lecture.findById(lectureId);
+              if (existingLecture && existingLecture.lectureUrl) {
+                lectureUrl = existingLecture.lectureUrl;
+              } else {
+                return res.status(400).json({ error: `Missing video file for new lecture: ${lecture.lectureTitle}` });
+              }
+            } else {
+              return res.status(400).json({ error: `Missing video file for new lecture: ${lecture.lectureTitle}` });
+            }
+          } else {
+            const file = files[fileIndex];
+            try {
+              if (lectureUrl && lectureId) {
+                const publicId = lectureUrl.split('/').pop()?.replace(/\.[^/.]+$/, '');
+                if (publicId) {
+                  await cloudinary.uploader.destroy(`easylearn/lectures/${publicId}`, { resource_type: "video" });
+                }
+              }
+              const uploadResult = await new Promise((resolve, reject) => {
+                cloudinary.uploader.upload_stream(
+                  { resource_type: "video", folder: "easylearn/lectures" },
+                  (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                  }
+                ).end(file.buffer);
+              });
+              lectureUrl = uploadResult.secure_url;
+              fileIndex++;
+            } catch (error) {
+              console.error("Cloudinary upload error:", error);
+              return res.status(500).json({ error: "Failed to upload video to Cloudinary" });
+            }
+          }
+        }
+
+        const lectureData = {
+          lectureTitle: lecture.lectureTitle,
+          lectureDuration: lecture.lectureDuration,
+          lectureUrl: lectureUrl || (lectureId ? (await Lecture.findById(lectureId))?.lectureUrl : ''),
+          isPreviewFree: lecture.isPreviewFree || false,
+        };
+
+        const newLecture = lectureId
+          ? await Lecture.findByIdAndUpdate(lectureId, lectureData, { new: true })
+          : new Lecture(lectureData);
+
+        if (!lectureId) {
+          await newLecture.save();
+        }
+        lectureIds.push(newLecture._id);
       }
-      updateData.originalPrice = parsedOriginalPrice;
+
+      const chapterData = {
+        chapterTitle: chapter.chapterTitle,
+        chapterContent: lectureIds,
+      };
+
+      const newChapter = chapter._id && mongoose.isValidObjectId(chapter._id)
+        ? await Chapter.findByIdAndUpdate(chapter._id, chapterData, { new: true })
+        : new Chapter(chapterData);
+
+      if (!chapter._id) {
+        await newChapter.save();
+      }
+      newChapters.push(newChapter._id);
     }
 
-    const updatedCourse = await Course.findByIdAndUpdate(courseId, updateData, {
-      new: true,
-      runValidators: true,
-    }).populate("instructorId", "name email");
+    // Only delete old chapters/lectures if curriculum IDs have changed
+    const existingChapterIds = existingCourse.curriculum.map(ch => ch._id.toString());
+    const newChapterIds = newChapters.map(id => id.toString());
+    if (JSON.stringify(existingChapterIds) !== JSON.stringify(newChapterIds)) {
+      for (const chapterId of existingCourse.curriculum) {
+        if (!newChapterIds.includes(chapterId._id.toString())) {
+          const chapter = await Chapter.findById(chapterId);
+          if (chapter) {
+            for (const lectureId of chapter.chapterContent) {
+              const lecture = await Lecture.findById(lectureId);
+              if (lecture && lecture.lectureUrl) {
+                const publicId = lecture.lectureUrl.split('/').pop()?.replace(/\.[^/.]+$/, '');
+                if (publicId) {
+                  await cloudinary.uploader.destroy(`easylearn/lectures/${publicId}`, { resource_type: "video" });
+                }
+              }
+              await Lecture.findByIdAndDelete(lectureId);
+            }
+            await Chapter.findByIdAndDelete(chapterId);
+          }
+        }
+      }
+    }
+
+    const updatedCourse = await Course.findByIdAndUpdate(
+      courseId,
+      {
+        title,
+        description,
+        instructor,
+        instructorId,
+        price: parseFloat(price) || 0,
+        originalPrice: originalPrice ? parseFloat(originalPrice) : null,
+        duration,
+        image: image || "/placeholder.svg",
+        category,
+        level,
+        whatWillLearn: JSON.parse(whatWillLearn || "[]"),
+        isFeatured: isFeatured === "true",
+        isPopular: isPopular === "true",
+        curriculum: newChapters,
+      },
+      { new: true }
+    ).populate({
+      path: "curriculum",
+      populate: { path: "chapterContent" },
+    });
 
     if (!updatedCourse) {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    res.json({ message: "Course updated successfully", course: updatedCourse });
-  } catch (err) {
-    console.error("Error updating course:", err);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(200).json({ course: updatedCourse });
+  } catch (error) {
+    console.error("Error updating course:", error);
+    res.status(500).json({ error: "Failed to update course" });
+  }
+};
+
+// PATCH /api/lectures/:lectureId/video
+exports.updateLectureVideo = async (req, res) => {
+  try {
+    const { lectureId } = req.params;
+    console.log("Received lectureId:", lectureId);
+    if (!mongoose.isValidObjectId(lectureId)) {
+      return res.status(400).json({ error: "Invalid lecture ID" });
+    }
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "No video file uploaded" });
+    }
+    console.log("File received:", file.originalname, file.mimetype);
+
+    const lecture = await Lecture.findById(lectureId);
+    if (!lecture) {
+      return res.status(404).json({ error: "Lecture not found" });
+    }
+
+    // Delete existing video if it exists
+    if (lecture.lectureUrl) {
+      const publicId = lecture.lectureUrl.split('/').pop()?.replace(/\.[^/.]+$/, '');
+      if (publicId) {
+        try {
+          await cloudinary.uploader.destroy(`easylearn/lectures/${publicId}`, { resource_type: "video" });
+          console.log("Deleted existing Cloudinary video:", publicId);
+        } catch (error) {
+          console.error("Error deleting existing Cloudinary video:", error);
+        }
+      }
+    }
+
+    // Upload new video to Cloudinary
+    try {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "video", folder: "easylearn/lectures" },
+          (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(file.buffer);
+      });
+
+      if (!uploadResult || !uploadResult.secure_url) {
+        throw new Error("Cloudinary upload failed: No secure_url in response");
+      }
+
+      lecture.lectureUrl = uploadResult.secure_url;
+      await lecture.save();
+      console.log("Lecture updated with new URL:", lecture.lectureUrl);
+      res.status(200).json({ lecture });
+    } catch (error) {
+      console.error("Cloudinary upload error:", error);
+      return res.status(500).json({ error: "Failed to upload video to Cloudinary" });
+    }
+  } catch (error) {
+    console.error("Error updating lecture video:", error);
+    res.status(500).json({ error: "Failed to update lecture video" });
   }
 };
 
@@ -210,16 +410,32 @@ exports.deleteCourse = async (req, res) => {
   try {
     const courseId = req.params.id;
 
-    const deletedCourse = await Course.findByIdAndDelete(courseId);
+    const course = await Course.findById(courseId).populate({
+      path: 'curriculum',
+      populate: { path: 'chapterContent', model: 'Lecture' },
+    });
 
-    if (!deletedCourse) {
-      return res.status(404).json({ error: "Course not found" });
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
     }
 
-    res.json({ message: "Course deleted successfully" });
+    // Delete associated lectures and chapters
+    for (const chapter of course.curriculum) {
+      for (const lecture of chapter.chapterContent) {
+        const publicId = lecture.lectureUrl.split('/').pop()?.replace(/\.[^/.]+$/, '');
+        if (publicId) {
+          await cloudinary.uploader.destroy(`easylearn/lectures/${publicId}`, { resource_type: "video" });
+        }
+        await Lecture.findByIdAndDelete(lecture._id);
+      }
+      await Chapter.findByIdAndDelete(chapter._id);
+    }
+
+    await Course.findByIdAndDelete(courseId);
+    res.json({ message: 'Course deleted successfully' });
   } catch (err) {
-    console.error("Error deleting course:", err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error deleting course:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -228,28 +444,24 @@ exports.getCoursesByInstructorId = async (req, res) => {
   try {
     const { instructorId } = req.params;
 
-    console.log("[getCoursesByInstructorId] Request received for instructor ID:", instructorId);
-
-    // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(instructorId)) {
-      console.error("[getCoursesByInstructorId] Invalid instructor ID:", instructorId);
-      return res.status(400).json({ error: "Invalid instructor ID" });
+      console.error('[getCoursesByInstructorId] Invalid instructor ID:', instructorId);
+      return res.status(400).json({ error: 'Invalid instructor ID' });
     }
 
-    // Fetch courses by instructorId
-    const courses = await Course.find({ instructorId }).populate("instructorId", "name email");
-
-    console.log(`[getCoursesByInstructorId] Found ${courses.length} courses for instructor ID:`, instructorId);
-
-    if (!courses || courses.length === 0) {
-      return res.json({ message: "No courses found for this instructor", courses: [] });
-    }
-
+    const courses = await Course.find({ instructorId })
+      .populate('instructorId', 'name email')
+      .populate({
+        path: 'curriculum',
+        model: 'Chapter',
+        populate: { path: 'chapterContent', model: 'Lecture' },
+      });
+      
+    console.log(JSON.stringify(courses, null, 2)); 
     res.json({ courses });
-
   } catch (err) {
-    console.error("[getCoursesByInstructorId] Error fetching instructor courses:", err.message || err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('[getCoursesByInstructorId] Error fetching instructor courses:', err.message || err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -302,7 +514,6 @@ exports.getAllCoursesAdmin = async (req, res) => {
     res.status(500).json({ message: 'Error fetching courses' });
   }
 };
-
 
 // count the course
 exports.getCourseCount = async (req, res) => {

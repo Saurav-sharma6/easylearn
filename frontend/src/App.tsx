@@ -17,6 +17,7 @@ import AllCourses from "./components/course/AllCourses.tsx";
 import AppLayout from "./components/AppLayout.tsx";
 
 import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
+import Cancel from "./pages/Cancel.tsx";
 
 
 const theme = createTheme({
@@ -50,6 +51,7 @@ const App = () => (
             element={<InstructorDashboard />}
           />
           <Route path="/success" element={<Success />} />
+        <Route path="/cancel" element={<Cancel />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />}/>
         </Routes>
       </BrowserRouter>
