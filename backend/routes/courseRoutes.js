@@ -50,5 +50,6 @@ router.delete('/:id', [authenticateToken, roleMiddleware(['instructor', 'admin']
 router.patch('/lectures/:lectureId/video', [authenticateToken, roleMiddleware(['instructor', 'admin']), uploadSingle.single('file')], courseController.updateLectureVideo);
 router.post('/progress', [authenticateToken, roleMiddleware(['student'])], courseController.updateProgress);
 router.get('/progress/:userId/:courseId', [authenticateToken, roleMiddleware(['student'])], courseController.getUserProgress);
+router.post('/certificates/generate', courseController.generateCertificate);
 
 module.exports = router;
