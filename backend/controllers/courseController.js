@@ -35,11 +35,14 @@ exports.createCourse = async (req, res) => {
     }
 
     const parsedCurriculum = JSON.parse(curriculum || "[]");
-    const files = req.files ? (Array.isArray(req.files.lectureVideos) ? req.files.lectureVideos : [req.files.lectureVideos]) : [];
+    const files = req.files ? (Array.isArray(req.files) ? req.files : req.files.lectureVideos || []) : [];
 
+    // Count expected videos based on videoFile flag
     let expectedVideos = 0;
     parsedCurriculum.forEach((chapter) => {
-      expectedVideos += chapter.chapterContent.length;
+      chapter.chapterContent.forEach((lecture) => {
+        if (lecture.videoFile) expectedVideos++;
+      });
     });
 
     if (files.length !== expectedVideos) {
@@ -53,41 +56,52 @@ exports.createCourse = async (req, res) => {
     for (const chapter of parsedCurriculum) {
       const lectureIds = [];
       for (const lecture of chapter.chapterContent) {
-        const file = files[fileIndex];
-        if (!file) {
-          return res.status(400).json({ error: "Missing video file for lecture" });
+        let lectureUrl = lecture.lectureUrl || ''; // Use existing URL or empty string
+        if (lecture.videoFile && fileIndex < files.length) {
+          const file = files[fileIndex];
+          try {
+            const uploadResult = await new Promise((resolve, reject) => {
+              const stream = cloudinary.uploader.upload_stream(
+                { resource_type: "video", folder: "easylearn/lectures" },
+                (error, result) => {
+                  if (error) reject(error);
+                  else resolve(result);
+                }
+              );
+              stream.end(file.buffer);
+            });
+            lectureUrl = uploadResult.secure_url;
+            fileIndex++;
+          } catch (error) {
+            console.error("Cloudinary upload error:", error);
+            return res.status(500).json({ error: "Failed to upload video to Cloudinary" });
+          }
         }
-        try {
-          const uploadResult = await cloudinary.uploader.upload_stream(
-            { resource_type: "video", folder: "easylearn/lectures" },
-            (error, result) => {
-              if (error) throw error;
-              return result;
-            }
-          ).end(file.buffer);
-          const lectureUrl = uploadResult.secure_url;
-          fileIndex++;
 
-          const newLecture = new Lecture({
-            lectureTitle: lecture.lectureTitle,
-            lectureDuration: lecture.lectureDuration,
-            lectureUrl,
-            isPreviewFree: lecture.isPreviewFree || false,
-          });
-          await newLecture.save();
-          lectureIds.push(newLecture._id);
-        } catch (error) {
-          console.error("Cloudinary upload error:", error);
-          return res.status(500).json({ error: "Failed to upload video to Cloudinary" });
-        }
+        const newLecture = new Lecture({
+          lectureTitle: lecture.lectureTitle,
+          lectureDuration: lecture.lectureDuration,
+          lectureUrl,
+          isPreviewFree: lecture.isPreviewFree || false,
+          chapterId: null, // Set later after chapter creation
+        });
+        await newLecture.save();
+        lectureIds.push(newLecture._id);
       }
 
       const newChapter = new Chapter({
         chapterTitle: chapter.chapterTitle,
         chapterContent: lectureIds,
+        courseId: null, // Set later after course creation
       });
       await newChapter.save();
       newChapters.push(newChapter._id);
+
+      // Update lectures with chapterId
+      await Lecture.updateMany(
+        { _id: { $in: lectureIds } },
+        { chapterId: newChapter._id }
+      );
     }
 
     const newCourse = new Course({
@@ -108,10 +122,23 @@ exports.createCourse = async (req, res) => {
     });
 
     await newCourse.save();
-    res.status(201).json({ course: newCourse });
+
+    // Update chapters with courseId
+    await Chapter.updateMany(
+      { _id: { $in: newChapters } },
+      { courseId: newCourse._id }
+    );
+
+    // Populate course for response
+    const populatedCourse = await Course.findById(newCourse._id).populate({
+      path: 'curriculum',
+      populate: { path: 'chapterContent' },
+    });
+
+    res.status(201).json({ course: populatedCourse });
   } catch (error) {
     console.error("Error creating course:", error);
-    res.status(500).json({ error: "Failed to create course" });
+    res.status(500).json({ error: `Failed to create course: ${error.message}` });
   }
 };
 
@@ -194,7 +221,7 @@ exports.updateCourse = async (req, res) => {
     const parsedCurriculum = JSON.parse(curriculum || "[]");
     console.log("Parsed curriculum:", parsedCurriculum);
     const files = req.files ? (Array.isArray(req.files) ? req.files : req.files.lectureVideos || []) : [];
-    console.log("FILES:", files);
+    // console.log("FILES:", files);
 
     const existingCourse = await Course.findById(courseId).populate({
       path: "curriculum",
@@ -346,8 +373,10 @@ exports.updateCourse = async (req, res) => {
 // PATCH /api/lectures/:lectureId/video
 exports.updateLectureVideo = async (req, res) => {
   try {
+    console.log("Here Starts!!!!")
     const { lectureId } = req.params;
-    console.log("Received lectureId:", lectureId);
+    const userId = req.user.userId;
+    console.log("#####Received lectureId:", lectureId);
     if (!mongoose.isValidObjectId(lectureId)) {
       return res.status(400).json({ error: "Invalid lecture ID" });
     }
@@ -462,7 +491,7 @@ exports.getCoursesByInstructorId = async (req, res) => {
         populate: { path: 'chapterContent', model: 'Lecture' },
       });
       
-    console.log(JSON.stringify(courses, null, 2)); 
+    // console.log(JSON.stringify(courses, null, 2)); 
     res.json({ courses });
   } catch (err) {
     console.error('[getCoursesByInstructorId] Error fetching instructor courses:', err.message || err);
@@ -554,7 +583,7 @@ exports.updateProgress = async (req, res) => {
     }
 
     // Log curriculum for debugging
-    console.log('Course curriculum:', JSON.stringify(course.curriculum, null, 2));
+    // console.log('Course curriculum:', JSON.stringify(course.curriculum, null, 2));
 
     // Validate lessonId exists in course
     const lessonExists = course.curriculum.some((chapter) =>

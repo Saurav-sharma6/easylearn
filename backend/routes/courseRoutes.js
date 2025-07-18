@@ -44,7 +44,7 @@ router.get('/list', [authenticateToken, roleMiddleware(['instructor', 'admin'])]
 router.post('/', [authenticateToken, roleMiddleware(['instructor', 'admin']), uploadMultiple.array('lectureVideos')], courseController.createCourse);
 router.get('/', courseController.getAllCourses);
 router.get('/:id', [authenticateToken, roleMiddleware(['student', 'instructor', 'admin'])], courseController.getCourseById);
-router.get('/instructor/:instructorId', courseController.getCoursesByInstructorId);
+router.get('/instructor/:instructorId', [authenticateToken, roleMiddleware(['instructor'])], courseController.getCoursesByInstructorId);
 router.put('/:id', [authenticateToken, roleMiddleware(['instructor', 'admin']), uploadMultiple.array('lectureVideos')], courseController.updateCourse);
 router.delete('/:id', [authenticateToken, roleMiddleware(['instructor', 'admin'])], courseController.deleteCourse);
 router.patch('/lectures/:lectureId/video', [authenticateToken, roleMiddleware(['instructor', 'admin']), uploadSingle.single('file')], courseController.updateLectureVideo);
