@@ -20,6 +20,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useNavigate } from "react-router-dom";
+import { FaArrowLeft } from "react-icons/fa";
 
 // Course interface
 interface Course {
@@ -314,7 +315,7 @@ const InstructorDashboard = () => {
 
     try {
       const response = await axiosInstance.patch(
-        `/api/lectures/${lectureDetails._id}/video`,
+        `/api/courses/lectures/${lectureDetails._id}/video`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -643,7 +644,48 @@ const InstructorDashboard = () => {
 
         {/* Form Section */}
         {showCreateForm && (
+          <div>
+              <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setEditingCourse(null);
+                    setFormData({
+                      title: "",
+                      description: "",
+                      price: null,
+                      originalPrice: null,
+                      category: "",
+                      level: "Beginner",
+                      image: "/placeholder.svg",
+                      duration: "0 hours",
+                      whatWillLearn: [],
+                      isFeatured: false,
+                      isPopular: false,
+                      instructorId: formData.instructorId,
+                    });
+                    setChapters([]);
+                  }}
+                  disabled={loading}
+                  sx={{
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    borderColor: "#d1d5db",
+                    color: "#4b50af",
+                    marginBottom: "1.5rem",
+                    "&:hover": {
+                      borderColor: "#9ca3af",
+                      bgcolor: "#f3f4f6",
+                    },
+                  }}
+                >
+                  <FaArrowLeft />
+                   Back
+                </Button>
+            
           <Card className="bg-white p-6 rounded-xl shadow-md">
+            
+            
             <Typography variant="h6" fontWeight="bold" gutterBottom>
               {editingCourse ? "Edit Course" : "Create New Course"}
             </Typography>
@@ -963,19 +1005,6 @@ const InstructorDashboard = () => {
                                   <span>
                                     {lecture.lectureTitle} -{" "}
                                     {lecture.lectureDuration} mins -{" "}
-                                    {lecture.lectureUrl ? (
-                                      <a
-                                        href={lecture.lectureUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-500 underline"
-                                      >
-                                        Link
-                                      </a>
-                                    ) : (
-                                      "No video"
-                                    )}{" "}
-                                    -{" "}
                                     {lecture.isPreviewFree
                                       ? "Free Preview"
                                       : "Paid"}
@@ -1095,6 +1124,7 @@ const InstructorDashboard = () => {
               </div>
             </form>
           </Card>
+          </div>
         )}
 
         {/* Courses List */}
