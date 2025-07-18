@@ -76,6 +76,7 @@ const Home = () => {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [progress, setProgress] = useState<CourseProgress[]>([]);
+  const [recommendedCourses, setRecommendedCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,6 +97,8 @@ const Home = () => {
         console.log("Fetching all courses");
         const response = await axiosInstance.get("/api/courses");
         setCourses(response.data.courses || []);
+        const allCourses: Course[] = response.data.courses || [];
+        setCourses(allCourses);
         console.log("Fetched courses:", response.data.courses);
 
         // Fetch enrolled courses if user is logged in
@@ -116,13 +119,14 @@ const Home = () => {
             setEnrollments([]);
             setEnrolledCourses([]);
             setProgress([]);
+            setRecommendedCourses(allCourses.filter(course => course.isPopular).slice(0, 4));
           } else {
             // Fetch progress for active enrollments
             console.log("Fetching progress for active enrollments:", fetchedEnrollments);
             const progressPromises = fetchedEnrollments.map(async (enrollment) => {
               try {
                 const progressResponse = await axiosInstance.get(`/api/courses/progress/${userId}/${enrollment.courseId}`);
-                console.log(`Fetched progress for course ${enrollment.courseId}:`, progressResponse.data);
+                // console.log(`Fetched progress for course ${enrollment.courseId}:`, progressResponse.data);
                 return {
                   courseId: enrollment.courseId,
                   percentageCompleted: progressResponse.data.courseProgress?.percentageCompleted || 0,
@@ -165,8 +169,30 @@ const Home = () => {
               const fetchedCourses = (await Promise.all(coursePromises)).filter((course): course is Course => course !== null);
               console.log("Fetched courses with progress:", fetchedCourses);
               setEnrolledCourses(fetchedCourses);
+              
+
+              
+
+              // Recommend courses based on enrolled course categories
+                const enrolledCourseIds = fetchedEnrollments.map(enrollment => enrollment.courseId.toString());
+                console.log(enrolledCourseIds)
+                console.log("Enrolled ", fetchedEnrollments)
+                const enrolledCategories = [...new Set(fetchedCourses.map(course => course.category).filter(category => category))];
+                console.log("Enrolled categories:", enrolledCategories);
+                const recommended = allCourses
+              .filter(course => {
+                const isRecommended = enrolledCategories.includes(course.category) && !enrolledCourseIds.includes(course._id.toString());
+                console.log(`Checking course ${course._id}: ${course.title}, Category: ${course.category}, Enrolled: ${enrolledCourseIds.includes(course._id.toString())}, Recommended: ${isRecommended}`);
+                return isRecommended;
+              })
+              .slice(0, 4); // Limit to 4 recommendations
+                console.log("Recommended courses:", recommended);
+                setRecommendedCourses(recommended.length > 0 ? recommended : allCourses.filter(course => course.isPopular).slice(0, 4));
             }
           }
+        } else {
+          // No user, set recommended to popular courses
+          setRecommendedCourses(allCourses.filter(course => course.isPopular).slice(0, 4));
         }
       } catch (err: any) {
         console.error("Failed to load data:", err.response?.data || err);
@@ -309,6 +335,32 @@ const Home = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 px-4">
                 {enrolledCourses.map((course) => (
+                  <CourseCard key={course._id} course={course} />
+                ))}
+              </div>
+            )}
+          </Container>
+        </section>
+      )}
+
+      {userId && (
+        <section className="py-16 bg-white">
+          <Container maxWidth="lg">
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={8}>
+              <Typography variant="h4" fontWeight="bold" color="textPrimary">
+                Recommended Courses
+              </Typography>
+              <Button variant="outlined" href="/courses" sx={{ textTransform: "none" }}>
+                View All Courses
+              </Button>
+            </Box>
+            {recommendedCourses.length === 0 ? (
+              <Typography variant="body1" color="textSecondary" textAlign="center">
+                No recommendations available. <a href="/courses" className="text-blue-600 underline">Browse all courses</a>.
+              </Typography>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 px-4">
+                {recommendedCourses.map((course) => (
                   <CourseCard key={course._id} course={course} />
                 ))}
               </div>
