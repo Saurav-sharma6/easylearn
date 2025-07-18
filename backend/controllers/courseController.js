@@ -2,6 +2,8 @@ const Course = require('../models/Course');
 const User = require('../models/User');
 const Lecture = require('../models/Lecture');
 const Chapter = require('../models/Chapter');
+const Progress = require('../models/Progress');
+const Enrollment = require('../models/Enrollment');
 const cloudinary = require('../config/cloudinaryConfig');
 const mongoose = require('mongoose');
 
@@ -129,7 +131,6 @@ exports.getAllCourses = async (req, res) => {
 exports.getCourseById = async (req, res) => {
   try {
     const courseId = req.params.id;
-
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       return res.status(400).json({ error: "Invalid course ID" });
     }
@@ -525,3 +526,173 @@ exports.getCourseCount = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// Save lesson progress
+exports.updateProgress = async (req, res) => {
+  const { courseId, lessonId, userId, progress, completed } = req.body;
+
+  try {
+    // Validate inputs
+    if (!userId || !courseId || !lessonId) {
+      return res.status(400).json({ error: "userId, courseId, and lessonId are required" });
+    }
+    if (!mongoose.isValidObjectId(courseId) || !mongoose.isValidObjectId(lessonId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ error: "Invalid userId, courseId, or lessonId" });
+    }
+
+    // Find course and populate curriculum
+    const course = await Course.findById(courseId).populate({
+      path: "curriculum",
+      populate: { path: "chapterContent" },
+    });
+    if (!course || !course.curriculum) {
+      return res.status(404).json({ error: "Course not found or invalid curriculum" });
+    }
+
+    // Log curriculum for debugging
+    // console.log('Course curriculum:', JSON.stringify(course.curriculum, null, 2));
+
+    // Validate lessonId exists in course
+    const lessonExists = course.curriculum.some((chapter) =>
+      Array.isArray(chapter.chapterContent) && chapter.chapterContent.some((lecture) => {
+        const lectureId = lecture._id ? lecture._id.toString() : null;
+        console.log(`Checking lecture ID: ${lectureId} against lessonId: ${lessonId}`);
+        return lectureId === lessonId;
+      })
+    );
+    if (!lessonExists) {
+      console.error(`Lesson ID ${lessonId} not found in course ${courseId}`);
+      return res.status(404).json({ error: "Lesson not found in course" });
+    }
+
+    // Check enrollment
+    const enrollment = await Enrollment.findOne({ userId, courseId });
+    if (!enrollment) {
+      return res.status(403).json({ error: "User not enrolled in this course" });
+    }
+
+    // Save progress
+    let progressRecord = await Progress.findOne({ userId, courseId, lessonId });
+    if (!progressRecord) {
+      progressRecord = new Progress({
+        userId,
+        courseId,
+        lessonId,
+        progress: Number(progress) || 0,
+        completed: !!completed,
+        lastUpdated: new Date(),
+      });
+    } else {
+      progressRecord.progress = Number(progress) || 0;
+      progressRecord.completed = !!completed;
+      progressRecord.lastUpdated = new Date();
+    }
+    await progressRecord.save();
+    console.log('Progress record saved:', progressRecord);
+
+    // Calculate course progress
+    const allProgress = await Progress.find({ userId, courseId });
+    const totalLessons = course.curriculum.reduce(
+      (total, chapter) => total + (Array.isArray(chapter.chapterContent) ? chapter.chapterContent.length : 0),
+      0
+    );
+    const completedLessons = allProgress.filter((p) => p.completed).length;
+    const watchedDuration = allProgress.reduce((total, p) => total + (Number(p.progress) || 0), 0);
+    const totalDuration = course.curriculum.reduce(
+      (total, chapter) =>
+        total +
+        (Array.isArray(chapter.chapterContent)
+          ? chapter.chapterContent.reduce(
+              (sum, lecture) => sum + (parseFloat(lecture.lectureDuration) || 0) * 60,
+              0
+            )
+          : 0),
+      0
+    );
+
+    const courseProgress = {
+      watchedDuration,
+      percentageCompleted: totalLessons ? (completedLessons / totalLessons) * 100 : 0,
+      status: completedLessons === totalLessons && totalLessons > 0 ? "completed" : "started",
+      totalDuration,
+    };
+    // console.log('Calculated courseProgress:', { totalLessons, completedLessons, percentageCompleted: courseProgress.percentageCompleted });
+
+    // Update enrollment status
+    try {
+      if (courseProgress.status === "completed") {
+        await Enrollment.findOneAndUpdate(
+          { userId, courseId },
+          { status: "completed" },
+          { upsert: true }
+        );
+      }
+    } catch (enrollmentError) {
+      console.error("Error updating enrollment:", enrollmentError.message);
+    }
+
+    res.json({ progress: allProgress, courseProgress, isCourseCompleted: courseProgress.status === "completed" });
+  } catch (error) {
+    console.error("Error updating progress:", error.message);
+    res.status(500).json({ error: "Failed to update progress" });
+  }
+};
+
+// Fetch user progress for a course
+exports.getUserProgress = async (req, res) => {
+  const { userId, courseId } = req.params;
+
+  try {
+    // Validate inputs
+    if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(courseId)) {
+      return res.status(400).json({ error: "Invalid userId or courseId" });
+    }
+
+    const course = await Course.findById(courseId).populate({
+      path: "curriculum",
+      populate: { path: "chapterContent" },
+    });
+    if (!course || !Array.isArray(course.curriculum)) {
+      return res.status(404).json({ error: "Course not found or invalid curriculum" });
+    }
+
+    // Check enrollment
+    const enrollment = await Enrollment.findOne({ userId, courseId });
+    if (!enrollment) {
+      return res.status(403).json({ error: "User not enrolled in this course" });
+    }
+
+    const progress = await Progress.find({ userId, courseId });
+    const totalLessons = course.curriculum.reduce(
+      (total, chapter) => total + (Array.isArray(chapter.chapterContent) ? chapter.chapterContent.length : 0),
+      0
+    );
+    const completedLessons = progress.filter((p) => p.completed).length;
+    const watchedDuration = progress.reduce((total, p) => total + (Number(p.progress) || 0), 0);
+    const totalDuration = course.curriculum.reduce(
+      (total, chapter) =>
+        total +
+        (Array.isArray(chapter.chapterContent)
+          ? chapter.chapterContent.reduce(
+              (sum, lecture) => sum + (parseFloat(lecture.lectureDuration) || 0) * 60,
+              0
+            )
+          : 0),
+      0
+    );
+
+    const courseProgress = {
+      watchedDuration,
+      percentageCompleted: totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0,
+      status: completedLessons === totalLessons && totalLessons > 0 ? "completed" : "started",
+      totalDuration,
+    };
+    console.log('Fetched courseProgress:', { totalLessons, completedLessons, percentageCompleted: courseProgress.percentageCompleted });
+
+    res.json({ progress, courseProgress });
+  } catch (error) {
+    console.error("Error fetching progress:", error.message);
+    res.status(500).json({ error: "Failed to fetch progress" });
+  }
+};
+
