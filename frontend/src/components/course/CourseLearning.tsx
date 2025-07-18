@@ -46,10 +46,10 @@ const CourseLearning = () => {
   const navigate = useNavigate();
   const storedUser = localStorage.getItem("user");
   const user: User | null = useMemo(() => {
-    console.log('Raw localStorage user:', storedUser);
+    console.log("Raw localStorage user:", storedUser);
     try {
       const parsedUser = storedUser ? JSON.parse(storedUser) : null;
-      console.log('Parsed user:', parsedUser);
+      console.log("Parsed user:", parsedUser);
       return parsedUser;
     } catch (error) {
       console.error("Invalid user data in localStorage:", error);
@@ -77,6 +77,67 @@ const CourseLearning = () => {
   });
   const progressRef = useRef<{ [lessonId: string]: number }>({});
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Generate certificate by calling backend
+  const generateCertificate = async () => {
+    if (!userId || !courseId) {
+      setSnackbar({
+        open: true,
+        message:
+          "Unable to generate certificate: Missing user or course details",
+        severity: "error",
+      });
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.post(
+        "/api/courses/certificates/generate",
+        {
+          userId,
+          courseId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${user?.token || ""}`,
+            Accept: "application/pdf",
+          },
+          responseType: "blob", // Expect binary PDF data
+        }
+      );
+
+      const blob = response.data;
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      // Trigger download
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${courseTitle}_Certificate.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      setSnackbar({
+        open: true,
+        message: "Certificate downloaded successfully!",
+        severity: "success",
+      });
+    } catch (error: any) {
+      console.error("Certificate generation failed:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setSnackbar({
+        open: true,
+        message:
+          error.response?.data?.error ||
+          error.message ||
+          "Failed to generate certificate",
+        severity: "error",
+      });
+    }
+  };
 
   useEffect(() => {
     const fetchCourseAndProgress = async () => {
@@ -105,7 +166,9 @@ const CourseLearning = () => {
         setLoading(true);
 
         // Check enrollment
-        const enrollmentsResponse = await axiosInstance.get(`/api/enrollments/user/${userId}`);
+        const enrollmentsResponse = await axiosInstance.get(
+          `/api/enrollments/user/${userId}`
+        );
         const isEnrolled = enrollmentsResponse.data.some(
           (e: any) => e.courseId === courseId
         );
@@ -121,7 +184,9 @@ const CourseLearning = () => {
         setEnrolled(true);
 
         // Fetch course data
-        const courseResponse = await axiosInstance.get(`/api/courses/${courseId}`);
+        const courseResponse = await axiosInstance.get(
+          `/api/courses/${courseId}`
+        );
         if (!courseResponse.data.course) {
           throw new Error("Course data not found");
         }
@@ -138,17 +203,26 @@ const CourseLearning = () => {
         // Handle curriculum (array of populated chapters)
         if (Array.isArray(course.curriculum)) {
           course.curriculum.forEach((chapter: any) => {
-            if (!chapter._id || !chapter.chapterTitle || !Array.isArray(chapter.chapterContent)) {
-              console.warn('Skipping invalid chapter:', chapter);
+            if (
+              !chapter._id ||
+              !chapter.chapterTitle ||
+              !Array.isArray(chapter.chapterContent)
+            ) {
+              console.warn("Skipping invalid chapter:", chapter);
               return;
             }
             const chapterLessons: Lesson[] = chapter.chapterContent
               .map((lecture: any) => {
-                if (!lecture._id || !lecture.lectureUrl || !lecture.lectureTitle) {
-                  console.warn('Skipping invalid lecture:', lecture);
+                if (
+                  !lecture._id ||
+                  !lecture.lectureUrl ||
+                  !lecture.lectureTitle
+                ) {
+                  console.warn("Skipping invalid lecture:", lecture);
                   return null;
                 }
-                const durationSeconds = parseFloat(lecture.lectureDuration || 0) * 60;
+                const durationSeconds =
+                  parseFloat(lecture.lectureDuration || 0) * 60;
                 const lesson = {
                   id: lecture._id.toString(),
                   title: lecture.lectureTitle || "Untitled Lesson",
@@ -173,7 +247,7 @@ const CourseLearning = () => {
             }
           });
         } else {
-          console.error('Invalid curriculum format:', course.curriculum);
+          console.error("Invalid curriculum format:", course.curriculum);
           throw new Error("Invalid curriculum format");
         }
 
@@ -194,27 +268,38 @@ const CourseLearning = () => {
         };
 
         try {
-          const progressResponse = await axiosInstance.get(`/api/courses/progress/${userId}/${courseId}`);
+          const progressResponse = await axiosInstance.get(
+            `/api/courses/progress/${userId}/${courseId}`
+          );
           // console.log('Fetched progress response:', JSON.stringify(progressResponse.data, null, 2));
           progress = progressResponse.data.progress || [];
-          fetchedCourseProgress = progressResponse.data.courseProgress || fetchedCourseProgress;
+          fetchedCourseProgress =
+            progressResponse.data.courseProgress || fetchedCourseProgress;
         } catch (err: any) {
-          console.error('Progress fetch error:', err.response?.data || err);
+          console.error("Progress fetch error:", err.response?.data || err);
           if (err.response?.status === 404) {
-            console.log('No progress found, initializing empty progress');
+            console.log("No progress found, initializing empty progress");
             for (const lesson of allLessons) {
               if (!lesson.id) continue;
               try {
-                await axiosInstance.post('/api/courses/progress', {
+                await axiosInstance.post("/api/courses/progress", {
                   courseId,
                   lessonId: lesson.id,
                   userId,
                   progress: 0,
                   completed: false,
                 });
-                progress.push({ lessonId: lesson.id, progress: 0, completed: false });
+                progress.push({
+                  lessonId: lesson.id,
+                  progress: 0,
+                  completed: false,
+                });
               } catch (postErr: any) {
-                console.error('Failed to initialize progress for lesson:', lesson.id, postErr.response?.data || postErr);
+                console.error(
+                  "Failed to initialize progress for lesson:",
+                  lesson.id,
+                  postErr.response?.data || postErr
+                );
               }
             }
           } else {
@@ -224,10 +309,14 @@ const CourseLearning = () => {
 
         // Update lessons and chapters with progress
         const updatedLessons = allLessons.map((lesson) => {
-          const progressEntry = progress.find((p: any) => p.lessonId.toString() === lesson.id);
+          const progressEntry = progress.find(
+            (p: any) => p.lessonId.toString() === lesson.id
+          );
           // console.log('Processing lesson:', lesson.id, 'progressEntry:', progressEntry);
           if (progressEntry) {
-            progressRef.current[lesson.id] = isNaN(progressEntry.progress) ? 0 : progressEntry.progress;
+            progressRef.current[lesson.id] = isNaN(progressEntry.progress)
+              ? 0
+              : progressEntry.progress;
             return { ...lesson, completed: !!progressEntry.completed };
           }
           return lesson;
@@ -237,8 +326,12 @@ const CourseLearning = () => {
         const updatedChapters = fetchedChapters.map((chapter) => ({
           ...chapter,
           lessons: chapter.lessons.map((lesson) => {
-            const progressEntry = progress.find((p: any) => p.lessonId.toString() === lesson.id);
-            return progressEntry ? { ...lesson, completed: !!progressEntry.completed } : lesson;
+            const progressEntry = progress.find(
+              (p: any) => p.lessonId.toString() === lesson.id
+            );
+            return progressEntry
+              ? { ...lesson, completed: !!progressEntry.completed }
+              : lesson;
           }),
         }));
 
@@ -256,14 +349,24 @@ const CourseLearning = () => {
         // console.log('Initial courseProgress:', fetchedCourseProgress);
 
         // Set currentLessonIndex to the first uncompleted lesson
-        const firstUncompletedIndex = updatedLessons.findIndex((lesson) => !lesson.completed);
-        const initialIndex = firstUncompletedIndex !== -1 ? firstUncompletedIndex : updatedLessons.length > 0 ? 0 : -1;
+        const firstUncompletedIndex = updatedLessons.findIndex(
+          (lesson) => !lesson.completed
+        );
+        const initialIndex =
+          firstUncompletedIndex !== -1
+            ? firstUncompletedIndex
+            : updatedLessons.length > 0
+            ? 0
+            : -1;
         // console.log('Setting initial currentLessonIndex:', initialIndex, 'title:', updatedLessons[initialIndex]?.title || 'none');
         setCurrentLessonIndex(initialIndex);
       } catch (err: any) {
-        console.error("Failed to load course or progress:", err.response?.data || err);
+        console.error(
+          "Failed to load course or progress:",
+          err.response?.data || err
+        );
         if (err.response?.status === 401 || err.response?.status === 403) {
-          console.log('Authentication failed, redirecting to login');
+          console.log("Authentication failed, redirecting to login");
           localStorage.removeItem("user");
           setSnackbar({
             open: true,
@@ -274,7 +377,8 @@ const CourseLearning = () => {
         } else {
           setSnackbar({
             open: true,
-            message: err.response?.data?.error || "Failed to load course content",
+            message:
+              err.response?.data?.error || "Failed to load course content",
             severity: "error",
           });
         }
@@ -287,7 +391,12 @@ const CourseLearning = () => {
   }, [courseId, userId, navigate]);
 
   // Save lesson progress with retry
-  const saveProgress = async (lessonId: string, progress: number, completed: boolean, retries = 3) => {
+  const saveProgress = async (
+    lessonId: string,
+    progress: number,
+    completed: boolean,
+    retries = 3
+  ) => {
     if (!userId || !lessonId) {
       setSnackbar({
         open: true,
@@ -305,7 +414,7 @@ const CourseLearning = () => {
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const response = await axiosInstance.post('/api/courses/progress', {
+        const response = await axiosInstance.post("/api/courses/progress", {
           courseId,
           lessonId,
           userId,
@@ -333,11 +442,18 @@ const CourseLearning = () => {
                 lesson.id === lessonId ? { ...lesson, completed: true } : lesson
               ),
             }));
-            console.log('Updated chapters after save:', newChapters.map((c) => ({
-              id: c.id,
-              title: c.title,
-              lessons: c.lessons.map((l) => ({ id: l.id, title: l.title, completed: l.completed })),
-            })));
+            console.log(
+              "Updated chapters after save:",
+              newChapters.map((c) => ({
+                id: c.id,
+                title: c.title,
+                lessons: c.lessons.map((l) => ({
+                  id: l.id,
+                  title: l.title,
+                  completed: l.completed,
+                })),
+              }))
+            );
             setSnackbar({
               open: true,
               message: "Lesson marked as complete!",
@@ -345,16 +461,27 @@ const CourseLearning = () => {
             });
             return newChapters;
           });
-          
+          if (response.data.isCourseCompleted) {
+            setSnackbar({
+              open: true,
+              message: "Congratulations! Course completed! Download your certificate.",
+              severity: "success",
+            });
+          }
         }
+
+
         // Update progressRef after saving
         progressRef.current[lessonId] = progress;
         // console.log('Updated progressRef after save:', progressRef.current);
         return;
       } catch (err: any) {
         // console.error(`Error saving progress (attempt ${attempt}):`, err.response?.data || err);
-        if (err.response?.status === 404 && err.response?.data?.error === "Lesson not found in course") {
-          console.error('Lesson ID mismatch detected. Lesson ID:', lessonId);
+        if (
+          err.response?.status === 404 &&
+          err.response?.data?.error === "Lesson not found in course"
+        ) {
+          console.error("Lesson ID mismatch detected. Lesson ID:", lessonId);
           setSnackbar({
             open: true,
             message: "Lesson not found in course. Please try again.",
@@ -382,7 +509,11 @@ const CourseLearning = () => {
   const handleLessonComplete = (lessonId: string) => {
     if (!lessons.find((lesson) => lesson.id === lessonId)?.completed) {
       const currentLesson = lessons.find((l) => l.id === lessonId);
-      saveProgress(lessonId, currentLesson?.durationSeconds || progressRef.current[lessonId] || 0, true);
+      saveProgress(
+        lessonId,
+        currentLesson?.durationSeconds || progressRef.current[lessonId] || 0,
+        true
+      );
     }
   };
 
@@ -411,13 +542,21 @@ const CourseLearning = () => {
     progressRef.current[lessonId] = currentTime;
 
     // Save progress every 10 seconds for non-completed lessons
-    if (Math.floor(currentTime) % 10 === 0 && currentTime > 0 && !lessons.find((l) => l.id === lessonId)?.completed) {
+    if (
+      Math.floor(currentTime) % 10 === 0 &&
+      currentTime > 0 &&
+      !lessons.find((l) => l.id === lessonId)?.completed
+    ) {
       // console.log('Saving periodic progress:', { lessonId, currentTime });
       saveProgress(lessonId, currentTime, false);
     }
 
     // Auto-mark lesson as complete at 90% but continue playing
-    if (duration && currentTime >= duration * 0.9 && !lessons.find((l) => l.id === lessonId)?.completed) {
+    if (
+      duration &&
+      currentTime >= duration * 0.9 &&
+      !lessons.find((l) => l.id === lessonId)?.completed
+    ) {
       // console.log('Auto-marking lesson as complete at 90%:', lessonId);
       handleLessonComplete(lessonId);
     }
@@ -441,13 +580,15 @@ const CourseLearning = () => {
       );
       if (currentChapterIndex < chapters.length - 1) {
         const nextChapter = chapters[currentChapterIndex + 1];
-        const nextLessonIndex = lessons.findIndex((lesson) => lesson.id === nextChapter.lessons[0].id);
+        const nextLessonIndex = lessons.findIndex(
+          (lesson) => lesson.id === nextChapter.lessons[0].id
+        );
         if (nextLessonIndex >= 0) {
           // console.log('Advancing to next chapter lesson, index:', nextLessonIndex);
           setCurrentLessonIndex(nextLessonIndex);
         }
       } else {
-        console.log('Course completed, no more lessons');
+        console.log("Course completed, no more lessons");
         if (videoRef.current) {
           videoRef.current.pause();
         }
@@ -472,7 +613,7 @@ const CourseLearning = () => {
       return;
     }
     try {
-      const response = await axiosInstance.post('/api/enrollments', {
+      const response = await axiosInstance.post("/api/enrollments", {
         userId,
         courseId,
       });
@@ -510,7 +651,11 @@ const CourseLearning = () => {
           </Box>
         ) : !userId ? (
           <Typography variant="body1" sx={{ color: "#c53030" }}>
-            Please <a href="/login" className="text-blue-600 underline">log in</a> to access this course.
+            Please{" "}
+            <a href="/login" className="text-blue-600 underline">
+              log in
+            </a>{" "}
+            to access this course.
           </Typography>
         ) : !enrolled ? (
           <Box>
@@ -552,21 +697,42 @@ const CourseLearning = () => {
                 }}
               />
             </Box>
-
-            {!isCourseCompleted && lessons[currentLessonIndex] && !lessons[currentLessonIndex].completed && (
-              <div className="mb-6">
+                {isCourseCompleted && (
+              <Box sx={{ mb: 4, p: 3, bgcolor: "#e6fffa", borderRadius: 2, textAlign: "center" }}>
+                <Typography variant="h6" sx={{ color: "#059669", mb: 2 }}>
+                  Congratulations! You have completed {courseTitle}!
+                </Typography>
                 <Button
-                  onClick={handleMarkCurrentLessonComplete}
                   variant="contained"
-                  color="success"
+                  color="primary"
                   startIcon={<CheckCircle />}
-                  sx={{ bgcolor: "#059669", "&:hover": { bgcolor: "#047857" } }}
-                  disabled={loading}
+                  onClick={generateCertificate}
+                  sx={{ bgcolor: "#3b82f6", "&:hover": { bgcolor: "#2563eb" } }}
                 >
-                  Mark Lesson as Complete
+                  Download Certificate
                 </Button>
-              </div>
+              </Box>
             )}
+            
+            {!isCourseCompleted &&
+              lessons[currentLessonIndex] &&
+              !lessons[currentLessonIndex].completed && (
+                <div className="mb-6">
+                  <Button
+                    onClick={handleMarkCurrentLessonComplete}
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckCircle />}
+                    sx={{
+                      bgcolor: "#059669",
+                      "&:hover": { bgcolor: "#047857" },
+                    }}
+                    disabled={loading}
+                  >
+                    Mark Lesson as Complete
+                  </Button>
+                </div>
+              )}
 
             <VideoPlayer
               chapters={chapters}
