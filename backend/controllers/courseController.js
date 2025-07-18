@@ -4,8 +4,11 @@ const Lecture = require('../models/Lecture');
 const Chapter = require('../models/Chapter');
 const Progress = require('../models/Progress');
 const Enrollment = require('../models/Enrollment');
+const Certificate = require('../models/Certificate');
 const cloudinary = require('../config/cloudinaryConfig');
 const mongoose = require('mongoose');
+const PDFDocument = require('pdfkit');
+const streamBuffers = require('stream-buffers');
 
 // POST /api/courses
 exports.createCourse = async (req, res) => {
@@ -131,6 +134,7 @@ exports.getAllCourses = async (req, res) => {
 exports.getCourseById = async (req, res) => {
   try {
     const courseId = req.params.id;
+    console.log("Fetching course with ID:", courseId);
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       return res.status(400).json({ error: "Invalid course ID" });
     }
@@ -550,7 +554,7 @@ exports.updateProgress = async (req, res) => {
     }
 
     // Log curriculum for debugging
-    // console.log('Course curriculum:', JSON.stringify(course.curriculum, null, 2));
+    console.log('Course curriculum:', JSON.stringify(course.curriculum, null, 2));
 
     // Validate lessonId exists in course
     const lessonExists = course.curriculum.some((chapter) =>
@@ -616,7 +620,7 @@ exports.updateProgress = async (req, res) => {
       status: completedLessons === totalLessons && totalLessons > 0 ? "completed" : "started",
       totalDuration,
     };
-    // console.log('Calculated courseProgress:', { totalLessons, completedLessons, percentageCompleted: courseProgress.percentageCompleted });
+    console.log('Calculated courseProgress:', { totalLessons, completedLessons, percentageCompleted: courseProgress.percentageCompleted });
 
     // Update enrollment status
     try {
@@ -696,3 +700,171 @@ exports.getUserProgress = async (req, res) => {
   }
 };
 
+
+// POST /api/certificates/generate
+exports.generateCertificate = async (req, res) => {
+
+  console.log("GENERATE CERTIFICATE - Starting", { body: req.body });
+  const { userId, courseId } = req.body;
+
+  try {
+    // Validate inputs
+    console.log("Validating userId and courseId", { userId, courseId });
+    if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(courseId)) {
+      console.log("Validation failed: Invalid userId or courseId");
+      return res.status(400).json({ error: "Invalid userId or courseId" });
+    }
+
+    // Check enrollment and completion status
+    console.log("Checking enrollment for userId:", userId, "courseId:", courseId);
+    const enrollment = await Enrollment.findOne({ userId, courseId });
+    if (!enrollment) {
+      console.log("Enrollment not found");
+      return res.status(403).json({ error: "User not enrolled in this course" });
+    }
+    if (enrollment.status !== "completed") {
+      console.log("Course not completed, status:", enrollment.status);
+      return res.status(403).json({ error: "Course not completed" });
+    }
+
+    // Fetch user and course details
+    console.log("Fetching user:", userId);
+    const user = await User.findById(userId);
+    if (!user) {
+      console.log("User not found");
+      return res.status(404).json({ error: "User not found" });
+    }
+    console.log("Fetching course:", courseId);
+    const course = await Course.findById(courseId);
+    if (!course) {
+      console.log("Course not found");
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Check if certificate already exists
+    console.log("Checking for existing certificate", { userId, courseId });
+    const existingCertificate = await Certificate.findOne({ userId, courseId });
+    console.log("Existing certificate check result:", existingCertificate);
+    if (existingCertificate) {
+      console.log("Returning existing certificate URL:", existingCertificate.certificateUrl);
+      return res.status(200).json({ certificateUrl: existingCertificate.certificateUrl });
+    }
+
+    // Generate PDF certificate
+    console.log("Generating PDF certificate");
+    const doc = new PDFDocument();
+    const stream = new streamBuffers.WritableStreamBuffer();
+    doc.pipe(stream);
+
+    doc.fontSize(24).text("Certificate of Completion", { align: "center" });
+    doc.moveDown();
+    doc.fontSize(16).text(`This certifies that`, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(20).text(user.name, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(16).text(`has successfully completed the course`, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(20).text(course.title, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(14).text(`Date of Completion: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(14).text("Issued by EasyLearn", { align: "center" });
+    doc.end();
+
+    console.log("Waiting for PDF stream to finish");
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      stream.on('finish', () => {
+        const buffer = stream.getContents();
+        console.log("PDF stream finished, buffer length:", buffer ? buffer.length : "null or false");
+        if (!buffer || buffer === false) {
+          reject(new Error("Failed to generate PDF buffer: stream.getContents() returned false"));
+        } else {
+          resolve(buffer);
+        }
+      });
+      stream.on('error', (err) => {
+        console.error("PDF stream error:", err);
+        reject(err);
+      });
+    });
+
+    // Upload PDF to Cloudinary
+    console.log("Uploading PDF to Cloudinary");
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: "raw",
+          folder: "easylearn/certificates",
+          format: "pdf",
+          access_mode: "public",
+          filename_override: `${user.name}_${course.title}_Certificate.pdf`,
+          use_filename: true,
+          response_type: "attachment",
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            reject(error);
+          } else {
+            console.log("Cloudinary upload result:", result);
+            resolve(result);
+          }
+        }
+      );
+      uploadStream.on('error', (err) => {
+        console.error("Cloudinary stream error:", err);
+        reject(err);
+      });
+      if (!pdfBuffer || !(pdfBuffer instanceof Buffer)) {
+        console.error("Invalid pdfBuffer:", pdfBuffer);
+        reject(new Error("Invalid pdfBuffer: not a Buffer instance"));
+      }
+      uploadStream.end(pdfBuffer);
+    });
+
+    if (!uploadResult || !uploadResult.secure_url) {
+      console.error("Cloudinary upload failed: No secure_url in response", { uploadResult });
+      throw new Error("Cloudinary upload failed: No secure_url in response");
+    }
+
+    // Generate signed Cloudinary URL
+    console.log("Generating signed Cloudinary URL");
+    const timestamp = Math.round(new Date().getTime() / 1000);
+    const signedUrl = cloudinary.url(uploadResult.public_id, {
+      resource_type: "raw",
+      sign_url: true,
+      type: "upload",
+      format: "pdf",
+      attachment: true,
+      filename: `${user.name}_${course.title}_Certificate.pdf`,
+      timestamp: timestamp,
+    });
+    console.log("Signed Cloudinary URL:", signedUrl);
+
+    // Save certificate record
+    console.log("Saving certificate to MongoDB");
+    const certificate = new Certificate({
+      userId,
+      courseId,
+      issuedAt: new Date(),
+      certificateUrl: signedUrl,
+    });
+    const savedCertificate = await certificate.save();
+    console.log("Certificate generated and saved:", {
+      userId,
+      courseId,
+      certificateId: savedCertificate._id,
+      certificateUrl: signedUrl,
+    });
+
+    // Serve PDF directly
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${user.name}_${course.title}_Certificate.pdf"`,
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error generating certificate:", error.message, error.stack);
+    res.status(500).json({ error: "Failed to generate certificate", details: error.message });
+  }
+};

@@ -78,6 +78,60 @@ const CourseLearning = () => {
   const progressRef = useRef<{ [lessonId: string]: number }>({});
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
+  // Generate certificate by calling backend
+  const generateCertificate = async () => {
+    if (!userId || !courseId) {
+      setSnackbar({
+        open: true,
+        message: "Unable to generate certificate: Missing user or course details",
+        severity: "error",
+      });
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.post('/api/courses/certificates/generate', {
+        userId,
+        courseId,
+      }, {
+        headers: {
+          Authorization: `Bearer ${user?.token || ''}`,
+          'Accept': 'application/pdf',
+        },
+        responseType: 'blob', // Expect binary PDF data
+      });
+
+      const blob = response.data;
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      // Trigger download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${courseTitle}_Certificate.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      setSnackbar({
+        open: true,
+        message: "Certificate downloaded successfully!",
+        severity: "success",
+      });
+    } catch (error: any) {
+      console.error("Certificate generation failed:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || error.message || "Failed to generate certificate",
+        severity: "error",
+      });
+    }
+  };
+
   useEffect(() => {
     const fetchCourseAndProgress = async () => {
       if (!userId) {
@@ -345,7 +399,13 @@ const CourseLearning = () => {
             });
             return newChapters;
           });
-          
+          if (response.data.isCourseCompleted) {
+            setSnackbar({
+              open: true,
+              message: "Congratulations! Course completed! Download your certificate.",
+              severity: "success",
+            });
+          }
         }
         // Update progressRef after saving
         progressRef.current[lessonId] = progress;
@@ -552,6 +612,23 @@ const CourseLearning = () => {
                 }}
               />
             </Box>
+
+            {isCourseCompleted && (
+              <Box sx={{ mb: 4, p: 3, bgcolor: "#e6fffa", borderRadius: 2, textAlign: "center" }}>
+                <Typography variant="h6" sx={{ color: "#059669", mb: 2 }}>
+                  Congratulations! You have completed {courseTitle}!
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<CheckCircle />}
+                  onClick={generateCertificate}
+                  sx={{ bgcolor: "#3b82f6", "&:hover": { bgcolor: "#2563eb" } }}
+                >
+                  Download Certificate
+                </Button>
+              </Box>
+            )}
 
             {!isCourseCompleted && lessons[currentLessonIndex] && !lessons[currentLessonIndex].completed && (
               <div className="mb-6">

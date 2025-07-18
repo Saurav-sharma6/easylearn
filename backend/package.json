@@ -24,6 +24,8 @@
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "nodemailer": "^7.0.3",
+    "pdfkit": "^0.17.1",
+    "stream-buffers": "^3.0.3",
     "streamifier": "^0.1.1",
     "stripe": "^18.3.0"
   }
