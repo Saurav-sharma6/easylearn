@@ -227,13 +227,8 @@ const CourseDetail = () => {
     );
   }
 
-  console.log("Rendering course:", course);
-  console.log("Curriculum being rendered:", course.curriculum);
-  console.log("Frontend isEnrolled:", isEnrolled);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
       <section className="bg-gray-700 text-white py-12">
         <Container maxWidth="lg">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

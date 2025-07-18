@@ -101,8 +101,6 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
         <Container maxWidth="lg">
