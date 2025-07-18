@@ -18,6 +18,7 @@ import AppLayout from "./components/AppLayout.tsx";
 
 import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
 import Cancel from "./pages/Cancel.tsx";
+import MyLearning from "./pages/MyLearning.tsx";
 
 const theme = createTheme({
   palette: {
@@ -39,8 +40,9 @@ const App = () => (
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
-            <Route path="/courses" element={<AllCourses />} />
 
+            <Route path="/my-learning" element={<MyLearning />} />
+            <Route path="/courses" element={<AllCourses />} />
             {/* <Route path="/courses" element={<CourseList />} /> */}
             <Route path="/course/:id/learn" element={<CourseLearning />} />
             <Route path="/course/:id" element={<CourseDetail />} />

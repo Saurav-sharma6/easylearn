@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
-import Header from "../components/layout/Header";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import Contact from "../components/contact";
-
-// MUI Components
+import axiosInstance from "../helpers/axiosInstance";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -12,20 +11,14 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import InputLabel from "@mui/material/InputLabel";
 import FormControl from "@mui/material/FormControl";
-
-// Icons
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import BookOpenIcon from "@mui/icons-material/MenuBook";
 import UsersIcon from "@mui/icons-material/Group";
 import AwardIcon from "@mui/icons-material/EmojiEvents";
 import PlayIcon from "@mui/icons-material/PlayCircleFilled";
-
-// Course Card Component
 import CourseCard from "../components/course/CourseCard";
 
-// Axios for API calls
-import axiosInstance from "../helpers/axiosInstance";
-
-// Types
 interface Course {
   _id: string;
   title: string;
@@ -42,30 +35,159 @@ interface Course {
   isEnrolled?: boolean;
   isFeatured: boolean;
   isPopular: boolean;
+  percentageCompleted?: number;
+}
+
+interface Enrollment {
+  courseId: string;
+  status: "active" | "completed";
+}
+
+interface CourseProgress {
+  courseId: string;
+  percentageCompleted: number;
+}
+
+interface User {
+  id?: string;
+  _id?: string;
+  name: string;
+  email: string;
+  token?: string;
 }
 
 const Home = () => {
+  const navigate = useNavigate();
+  const storedUser = localStorage.getItem("user");
+  const user: User | null = useMemo(() => {
+    console.log("Raw localStorage user:", storedUser);
+    try {
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+      console.log("Parsed user:", parsedUser);
+      return parsedUser;
+    } catch (error) {
+      console.error("Invalid user data in localStorage:", error);
+      localStorage.removeItem("user");
+      return null;
+    }
+  }, [storedUser]);
+  const userId = user?.id || user?._id;
   const [courses, setCourses] = useState<Course[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
+  const [progress, setProgress] = useState<CourseProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchField, setSearchField] = useState<"title" | "description" | "instructor">("title");
   const [searchResults, setSearchResults] = useState<Course[]>([]);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: "success" | "error";
+  }>({ open: false, message: "", severity: "success" });
 
   useEffect(() => {
-    const fetchCourses = async () => {
+    const fetchCoursesAndEnrollments = async () => {
       try {
+        setLoading(true);
+
+        // Fetch all courses
+        console.log("Fetching all courses");
         const response = await axiosInstance.get("/api/courses");
         setCourses(response.data.courses || []);
-      } catch (err) {
-        setError("Failed to load courses"+err);
+        console.log("Fetched courses:", response.data.courses);
+
+        // Fetch enrolled courses if user is logged in
+        if (userId) {
+          console.log("Fetching enrollments for user:", userId);
+          const enrollmentsResponse = await axiosInstance.get(`/api/enrollments/user/${userId}`, {
+            headers: { Authorization: `Bearer ${user?.token || ''}` },
+          });
+          console.log("Fetched enrollments:", enrollmentsResponse.data);
+          const fetchedEnrollments: Enrollment[] = enrollmentsResponse.data;
+
+          // Filter for active enrollments
+          // const activeEnrollments = fetchedEnrollments.filter(enrollment => enrollment.status === "active");
+          // console.log("Active enrollments:", activeEnrollments);
+
+          if (fetchedEnrollments.length === 0) {
+            console.log("No active enrollments found for user:", userId);
+            setEnrollments([]);
+            setEnrolledCourses([]);
+            setProgress([]);
+          } else {
+            // Fetch progress for active enrollments
+            console.log("Fetching progress for active enrollments:", fetchedEnrollments);
+            const progressPromises = fetchedEnrollments.map(async (enrollment) => {
+              try {
+                const progressResponse = await axiosInstance.get(`/api/courses/progress/${userId}/${enrollment.courseId}`);
+                console.log(`Fetched progress for course ${enrollment.courseId}:`, progressResponse.data);
+                return {
+                  courseId: enrollment.courseId,
+                  percentageCompleted: progressResponse.data.courseProgress?.percentageCompleted || 0,
+                };
+              } catch (err: any) {
+                console.error(`Failed to fetch progress for course ${enrollment.courseId}:`, err.response?.data || err);
+                return { courseId: enrollment.courseId, percentageCompleted: 0 };
+              }
+            });
+            const fetchedProgress = await Promise.all(progressPromises);
+            console.log("Fetched progress:", fetchedProgress);
+
+            // Filter for courses with progress > 0
+            const activeProgress = fetchedProgress.filter(progress => progress.percentageCompleted > 0 && progress.percentageCompleted < 90);
+            console.log("Active progress (percentageCompleted > 0):", activeProgress);
+
+            if (activeProgress.length === 0) {
+              console.log("No active courses with progress found for user:", userId);
+              setEnrollments([]);
+              setEnrolledCourses([]);
+              setProgress([]);
+            } else {
+              setProgress(activeProgress);
+              setEnrollments(fetchedEnrollments.filter(enrollment => 
+                activeProgress.some(progress => progress.courseId === enrollment.courseId)
+              ));
+
+              // Fetch course details for active enrollments with progress
+              console.log("Fetching course details for active enrollments with progress:", activeProgress);
+              const coursePromises = activeProgress.map(async (progress) => {
+                try {
+                  const courseResponse = await axiosInstance.get(`/api/courses/${progress.courseId}`);
+                  console.log(`Fetched course ${progress.courseId}:`, courseResponse.data);
+                  return { ...courseResponse.data.course, isEnrolled: true, percentageCompleted: progress.percentageCompleted };
+                } catch (err: any) {
+                  console.error(`Failed to fetch course ${progress.courseId}:`, err.response?.data || err);
+                  return null;
+                }
+              });
+              const fetchedCourses = (await Promise.all(coursePromises)).filter((course): course is Course => course !== null);
+              console.log("Fetched courses with progress:", fetchedCourses);
+              setEnrolledCourses(fetchedCourses);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error("Failed to load data:", err.response?.data || err);
+        setError("Failed to load courses or enrollments: " + (err.response?.data?.error || err.message));
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          console.log("Authentication failed, redirecting to login");
+          localStorage.removeItem("user");
+          setSnackbar({
+            open: true,
+            message: "Session expired. Please log in again.",
+            severity: "error",
+          });
+          navigate("/login");
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCourses();
-  }, []);
+    fetchCoursesAndEnrollments();
+  }, [userId, navigate]);
 
   useEffect(() => {
     if (searchQuery.trim() === "") {
@@ -101,7 +223,6 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
       <section className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
         <Container maxWidth="lg">
           <div className="text-center px-4">
@@ -143,7 +264,6 @@ const Home = () => {
         </Container>
       </section>
 
-      {/* Stats Section */}
       <section className="py-16 bg-white">
         <Container maxWidth="lg">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 text-center">
@@ -171,7 +291,32 @@ const Home = () => {
         </Container>
       </section>
 
-      {/* Featured Courses */}
+      {userId && (
+        <section className="py-16 bg-gray-50">
+          <Container maxWidth="lg">
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={8}>
+              <Typography variant="h4" fontWeight="bold" color="textPrimary">
+                Let's Start Learning
+              </Typography>
+              <Button variant="outlined" href="/my-learning" sx={{ textTransform: "none" }}>
+                View All My Courses
+              </Button>
+            </Box>
+            {enrolledCourses.length === 0 ? (
+              <Typography variant="body1" color="textSecondary" textAlign="center">
+                You have no courses in progress. <a href="/my-learning" className="text-blue-600 underline">View all enrolled courses</a> or <a href="/courses" className="text-blue-600 underline">browse new courses</a>.
+              </Typography>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 px-4">
+                {enrolledCourses.map((course) => (
+                  <CourseCard key={course._id} course={course} />
+                ))}
+              </div>
+            )}
+          </Container>
+        </section>
+      )}
+
       <section className="py-16">
         <Container maxWidth="lg">
           <Box textAlign="center" mb={12}>
@@ -203,7 +348,6 @@ const Home = () => {
         </Container>
       </section>
 
-      {/* Popular Courses */}
       <section className="py-16 bg-white">
         <Container maxWidth="lg">
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={8}>
@@ -227,11 +371,10 @@ const Home = () => {
           </div>
         </Container>
       </section>
-      <br/>
-      <Contact></Contact>
-      <br/>
+      <br />
+      <Contact />
+      <br />
 
-      {/* CTA Section */}
       <section className="py-16 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
         <Container maxWidth="lg">
           <Box textAlign="center">
@@ -251,12 +394,28 @@ const Home = () => {
                 paddingX: 4,
                 fontWeight: 600,
               }}
+              onClick={() => navigate("/courses")}
             >
               Get Started Now
             </Button>
           </Box>
         </Container>
       </section>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

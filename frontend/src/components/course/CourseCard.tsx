@@ -1,21 +1,17 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom'; // <-- Replaced with NavLink
-
-// MUI Components
+import { NavLink } from 'react-router-dom';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-
-// Icons
+import LinearProgress from '@mui/material/LinearProgress';
 import StarIcon from '@mui/icons-material/Star';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 
-// Types
 export interface Course {
   _id: string;
   title: string;
@@ -30,7 +26,8 @@ export interface Course {
   category: string;
   level: 'Beginner' | 'Intermediate' | 'Advanced';
   isEnrolled?: boolean;
-  isNew?: boolean; // optional field
+  isNew?: boolean;
+  percentageCompleted?: number; // Added for progress display
 }
 
 const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
@@ -48,6 +45,7 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
     level,
     isEnrolled,
     isNew = false,
+    percentageCompleted,
   } = course;
 
   return (
@@ -59,7 +57,6 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
         },
       }}
     >
-      {/* Image Section */}
       <div className="relative h-48 w-full">
         <img src={image} alt={title} className="w-full h-full object-cover" />
         <div className="absolute top-2 right-2 flex items-center gap-1">
@@ -79,9 +76,7 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
         </div>
       </div>
 
-      {/* Content */}
       <CardContent className="p-4">
-        {/* Title */}
         <Typography
           variant="h6"
           fontWeight="bold"
@@ -101,7 +96,6 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
           </NavLink>
         </Typography>
 
-        {/* Description */}
         <Typography
           variant="body2"
           color="text.secondary"
@@ -111,7 +105,6 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
           {description}
         </Typography>
 
-        {/* Instructor */}
         <Box display="flex" alignItems="center" mb={1}>
           <PersonIcon fontSize="small" color="action" />
           <Typography variant="body2" color="textSecondary" sx={{ ml: 1 }}>
@@ -119,7 +112,6 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
           </Typography>
         </Box>
 
-        {/* Rating, Duration, Students */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Box display="flex" gap={2} color="text.secondary" sx={{ fontSize: '0.8rem' }}>
             <Box display="flex" alignItems="center">
@@ -140,7 +132,27 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
           </Typography>
         </Box>
 
-        {/* Price & Enroll Button */}
+        {isEnrolled && percentageCompleted !== undefined && (
+          <Box mb={2}>
+            <LinearProgress
+              variant="determinate"
+              value={percentageCompleted}
+              sx={{
+                height: 8,
+                borderRadius: 5,
+                backgroundColor: '#e0e0e0',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 5,
+                  backgroundColor: '#14b8a6',
+                },
+              }}
+            />
+            <Typography variant="body2" sx={{ color: '#4a5568', mt: 1 }}>
+              {percentageCompleted.toFixed(1)}% Completed
+            </Typography>
+          </Box>
+        )}
+
         <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
           <Box display="flex" alignItems="center">
             <LocalOfferIcon fontSize="small" color="action" />
@@ -158,10 +170,9 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
             )}
           </Box>
 
-          {/* Enroll / View Course Button */}
           {isEnrolled ? (
             <Button
-              component={NavLink} // <-- NavLink as component
+              component={NavLink}
               to={`/course/${_id}/learn`}
               size="small"
               variant="contained"
@@ -179,7 +190,7 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
             </Button>
           ) : (
             <Button
-              component={NavLink} // <-- NavLink as component
+              component={NavLink}
               to={`/course/${_id}`}
               size="small"
               variant={price === 0 ? 'contained' : 'outlined'}

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import Header from "../layout/Header";
 
 // MUI Components
 import Button from "@mui/material/Button";
@@ -139,8 +138,6 @@ const AllCourses = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
       <Container maxWidth="lg" className="py-12">
 
         <Box textAlign="center" mb={12}>

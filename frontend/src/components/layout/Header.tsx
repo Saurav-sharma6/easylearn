@@ -119,7 +119,7 @@ const Header = () => {
                   </Link>
                 )}
                 {user.role === 'student' && (
-                  <Link to="/my-courses">
+                  <Link to="/my-learning">
                     <Button variant="text" color="primary" sx={{ textTransform: 'none' }}>
                       My Learning
                     </Button>
