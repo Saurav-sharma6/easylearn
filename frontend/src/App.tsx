@@ -8,6 +8,7 @@ import ResetPassword from "./pages/ResetPassword.tsx";
 import CourseDetail from "./pages/CourseDetail.tsx";
 import InstructorDashboard from "./pages/InstructorDashboard.tsx";
 import CourseLearning from "./components/course/CourseLearning.tsx";
+
 import Success from "./pages/Success.tsx";
 
 // Material UI Components
@@ -18,6 +19,7 @@ import AppLayout from "./components/AppLayout.tsx";
 
 import AdminDashboard from "./pages/admin/AdminDashboard.tsx";
 import Cancel from "./pages/Cancel.tsx";
+import MyLearning from "./pages/MyLearning.tsx";
 
 const theme = createTheme({
   palette: {
@@ -33,26 +35,29 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<AppLayout />}>
-          
+
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/my-learning" element={<MyLearning />} />
+
+
             <Route path="/courses" element={<AllCourses />} />
 
             {/* <Route path="/courses" element={<CourseList />} /> */}
             <Route path="/course/:id/learn" element={<CourseLearning />} />
             <Route path="/course/:id" element={<CourseDetail />} />
-            
-            <Route path="/admin/dashboard" element={<AdminDashboard />}/>
+
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
           </Route>
           <Route
-              path="/instructor/dashboard"
-              element={<InstructorDashboard />}
-            />
-            <Route path="/success" element={<Success />} />
-            <Route path="/cancel" element={<Cancel />} />
+            path="/instructor/dashboard"
+            element={<InstructorDashboard />}
+          />
+          <Route path="/success" element={<Success />} />
+          <Route path="/cancel" element={<Cancel />} />
         </Routes>
       </BrowserRouter>
     </SnackbarProvider>
