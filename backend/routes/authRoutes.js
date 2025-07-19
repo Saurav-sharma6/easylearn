@@ -13,4 +13,8 @@ router.post('/logout', authenticateToken, authController.logout);
 router.post('/refresh-token', authController.refreshToken);
 router.get('/count', [authenticateToken, roleMiddleware(['admin'])], authController.getUserCount);
 
+router.get('/:id', [authenticateToken, roleMiddleware(['admin'])], authController.getUserById);
+router.patch('/:id', [authenticateToken, roleMiddleware(['admin'])], authController.updateUser);
+router.delete('/:id', [authenticateToken, roleMiddleware(['admin'])], authController.deleteUser);
+
 module.exports = router;

@@ -288,3 +288,91 @@ exports.getUserCount = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+exports.getUserById = async (req, res) => {
+  try {
+    console.log("USER GET")
+    const user = await User.findById(req.params.id).select('_id name email role');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({ user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { name, email, role } = req.body;
+
+    // Validate input
+    if (!name || !email || !role) {
+      return res.status(400).json({ message: 'Name, email, and role are required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    // Validate role
+    if (!['student', 'instructor', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    // Check for duplicate email
+    const existingUser = await User.findOne({ email, _id: { $ne: req.params.id } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email already in use' });
+    }
+
+    // Update user
+    user.name = name;
+    user.email = email;
+    user.role = role;
+
+    const updatedUser = await user.save();
+    res.json({ user: updatedUser });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+     console.log(`Deleting user with ID: ${req.params.id}`);
+    console.log('Authenticated user:', req.user); // Debug: log req.user
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      console.log(`User not found: ${req.params.id}`);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!req.user || (!req.user._id && !req.user.userId)) {
+      console.log('Invalid req.user:', req.user);
+      return res.status(401).json({ message: 'Unauthorized: Invalid user data' });
+    }
+
+    const currentUserId = req.user._id || req.user.userId;
+    if (currentUserId.toString() === req.params.id) {
+      console.log('Self-deletion attempt by:', currentUserId);
+      return res.status(400).json({ message: 'Cannot delete your own account' });
+    }
+
+    await user.deleteOne();
+    console.log(`User deleted: ${req.params.id}`);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

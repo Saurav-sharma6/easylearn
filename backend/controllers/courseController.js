@@ -526,7 +526,13 @@ exports.getAllCoursesAdmin = async (req, res) => {
     const { search, sort, limit = 5, page = 1 } = req.query;
     const skip = (page - 1) * limit;
 
-    let query = Course.find().select('title price originalPrice instructorId');
+    let query = Course.find()
+      .select('title price originalPrice instructor instructorId')
+      .populate({
+        path: 'instructorId',
+        select: 'name',
+        model: 'User',
+      })
     if (search) {
       query = query.where('title', new RegExp(search, 'i')); // Search by title
     }
