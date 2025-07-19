@@ -8,7 +8,7 @@ import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-
+import LinearProgress from '@mui/material/LinearProgress';
 // Icons
 import StarIcon from '@mui/icons-material/Star';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -30,7 +30,8 @@ export interface Course {
   category: string;
   level: 'Beginner' | 'Intermediate' | 'Advanced';
   isEnrolled?: boolean;
-  isNew?: boolean; // optional field
+  isNew?: boolean;
+  percentageCompleted?: number;
 }
 
 const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
@@ -48,6 +49,7 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
     level,
     isEnrolled,
     isNew = false,
+    percentageCompleted,
   } = course;
 
   return (
@@ -139,6 +141,26 @@ const CourseCard: React.FC<{ course: Course }> = ({ course }) => {
             {students} enrolled
           </Typography>
         </Box>
+        {isEnrolled && percentageCompleted !== undefined && (
+          <Box mb={2}>
+            <LinearProgress
+              variant="determinate"
+              value={percentageCompleted}
+              sx={{
+                height: 8,
+                borderRadius: 5,
+                backgroundColor: '#e0e0e0',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 5,
+                  backgroundColor: '#14b8a6',
+                },
+              }}
+            />
+            <Typography variant="body2" sx={{ color: '#4a5568', mt: 1 }}>
+              {percentageCompleted.toFixed(1)}% Completed
+            </Typography>
+          </Box>
+        )}
 
         {/* Price & Enroll Button */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>

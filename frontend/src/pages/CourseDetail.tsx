@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "../components/layout/Header";
-
-// MUI Components
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
@@ -12,8 +10,6 @@ import Container from "@mui/material/Container";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
-
-// Icons
 import StarIcon from "@mui/icons-material/Star";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import GroupIcon from "@mui/icons-material/Group";
@@ -21,11 +17,8 @@ import MenuBookIcon from "@mui/icons-material/MenuBook";
 import PlayCircleFilledIcon from "@mui/icons-material/PlayCircleFilled";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-
-// Axios instance
 import axiosInstance from "../helpers/axiosInstance";
 
-// Types
 interface Lecture {
   _id: string;
   lectureTitle: string;
@@ -53,7 +46,7 @@ interface Course {
   title: string;
   description: string;
   instructor: string;
-  instructorId: Instructor;
+  instructorId?: Instructor | string | null;
   price: number;
   originalPrice?: number | null;
   rating: number;
@@ -69,13 +62,37 @@ interface Course {
   __v: number;
 }
 
+interface Enrollment {
+  _id: string;
+  userId: string;
+  courseId: string;
+  paymentId?: string;
+  enrolledAt: string;
+  status: "active" | "completed" | "dropped";
+  __v: number;
+}
+
 const CourseDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // Fetch course from backend
+  useEffect(() => {
+    const fetchUserId = () => {
+      const userData = localStorage.getItem("user");
+      const parsedUserId = userData ? JSON.parse(userData).id : null;
+      setUserId(parsedUserId);
+    };
+
+    fetchUserId();
+  }, []);
+
   useEffect(() => {
     const fetchCourse = async () => {
       if (!id) {
@@ -85,18 +102,16 @@ const CourseDetail = () => {
       }
 
       try {
-        console.log("Fetching course with ID:", id); // 🔍 Log 1: ID being used
+        console.log("Fetching course with ID:", id);
         const response = await axiosInstance.get(`/api/courses/${id}`);
-        
-        console.log("API Response:", response.data); // 🔍 Log 2: Full API response
-        
+        console.log("Course API Response:", response.data);
         const courseData = response.data.course;
 
         if (!courseData) {
           throw new Error("No course data in response");
         }
 
-        console.log("Setting course state:", courseData); // 🔍 Log 3: course data
+        console.log("Setting course state:", courseData);
         setCourse(courseData);
       } catch (err: any) {
         console.error("Error fetching course:", err.message);
@@ -109,44 +124,86 @@ const CourseDetail = () => {
     fetchCourse();
   }, [id]);
 
-const handleEnroll = async () => {
-  if (!course) return;
+  useEffect(() => {
+    const checkEnrollment = async () => {
+      if (!userId || !id) {
+        console.log("Skipping enrollment check: userId or courseId missing", { userId, id });
+        return;
+      }
 
-  const userData = localStorage.getItem("user");
-  const userId = userData ? JSON.parse(userData).id : null;
+      try {
+        const response = await axiosInstance.get(`/api/enrollments/user/${userId}`);
+        console.log("Enrollment response:", response.data);
+        const isEnrolled = response.data.some((enrollment: Enrollment) => {
+          const courseId = enrollment.courseId;
+          console.log("Comparing courseId:", courseId, "with id:", id);
+          return courseId === id;
+        });
+        console.log("isEnrolled from API:", isEnrolled);
+        setIsEnrolled(isEnrolled);
+      } catch (err: any) {
+        console.error("Enrollment check error:", err.message);
+        setEnrollError("Failed to check enrollment status");
+      }
+    };
 
-  if (!userId) {
-    alert("User not logged in");
-    return;
-  }
-
-  if (course.price === 0) {
-    alert("You have successfully enrolled in this free course!");
-    return;
-  }
-
-  try {
-    const response = await axiosInstance.post("/api/payment/create-checkout-session", {
-      courseId: course._id,
-      courseName: course.title,
-      price: course.price,
-      userId: userId,
-    });
-
-    const { url } = response.data;
-    if (url) {
-      window.location.href = url;
-    } else {
-      alert("Failed to create checkout session.");
+    if (userId && id) {
+      checkEnrollment();
     }
-  } catch (error) {
-    console.error("Checkout error:", error);
-    alert("An error occurred during checkout.");
-  }
-};
 
+    // Handle cancel redirect
+    if (location.search.includes("session_id") && location.pathname.includes("/cancel")) {
+      setEnrollError("Payment was cancelled or declined. Please try again.");
+    }
+  }, [userId, id, location]);
 
+  const handleEnroll = async () => {
+    if (!course || !userId) {
+      setEnrollError("Please log in to enroll.");
+      return;
+    }
 
+    if (isEnrolled) {
+      navigate(`/course/${course._id}/learn`);
+      return;
+    }
+
+    if (course.price === 0) {
+      try {
+        const response = await axiosInstance.post("/api/enrollments", {
+          userId,
+          courseId: course._id,
+        });
+        console.log("Free enrollment response:", response.data);
+        setIsEnrolled(true);
+        alert("You have successfully enrolled in this free course!");
+        navigate(`/courses/${course._id}/learn`);
+      } catch (err: any) {
+        console.error("Free enrollment error:", err.response?.data || err);
+        setEnrollError(err.response?.data?.error || "Failed to enroll in the course.");
+      }
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.post("/api/payment/create-checkout-session", {
+        courseId: course._id,
+        courseName: course.title,
+        price: course.price,
+        userId,
+      });
+
+      const { url } = response.data;
+      if (url) {
+        window.location.href = url;
+      } else {
+        setEnrollError("Failed to initiate checkout. Please try again.");
+      }
+    } catch (error: any) {
+      console.error("Checkout error:", error.response?.data || error);
+      setEnrollError(error.response?.data?.error || "An error occurred during checkout. Please try again.");
+    }
+  };
 
   if (loading) {
     return (
@@ -170,17 +227,8 @@ const handleEnroll = async () => {
     );
   }
 
-  // 🔍 Log 4: Rendered course object
-  console.log("Rendering course:", course);
-
-  // 🔍 Log 5: Curriculum before rendering
-  console.log("Curriculum being rendered:", course.curriculum);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      {/* Hero Section */}
       <section className="bg-gray-700 text-white py-12">
         <Container maxWidth="lg">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -192,7 +240,6 @@ const handleEnroll = async () => {
               <span>{course.category}</span>
             </nav>
             <div className="flex flex-col md:flex-row gap-8">
-              {/* Course Info */}
               <div className="md:w-2/3">
                 <Typography variant="h4" fontWeight="bold" gutterBottom>
                   {course.title}
@@ -220,8 +267,6 @@ const handleEnroll = async () => {
                   </div>
                 </div>
               </div>
-
-              {/* Enroll Card */}
               <div className="md:w-1/3">
                 <Card className="sticky top-4 shadow-md rounded-lg overflow-hidden">
                   <div className="relative h-48 w-full">
@@ -249,22 +294,30 @@ const handleEnroll = async () => {
                         </Typography>
                       )}
                     </div>
+                    {enrollError && (
+                      <Typography color="error" sx={{ mb: 2 }}>
+                        {enrollError}
+                      </Typography>
+                    )}
                     <Button
                       fullWidth
                       variant="contained"
                       onClick={handleEnroll}
+                      disabled={false}
                       sx={{
                         mb: 2,
-                        bgcolor:
-                          course.price === 0 ? "#2563eb" : "#10B981",
+                        bgcolor: isEnrolled ? "#0288d1" : course.price === 0 ? "#2563eb" : "#10B981",
                         "&:hover": {
-                          bgcolor:
-                            course.price === 0 ? "#1d4ed8" : "#059669",
+                          bgcolor: isEnrolled ? "#0277bd" : course.price === 0 ? "#1d4ed8" : "#059669",
                         },
                         textTransform: "none",
                       }}
                     >
-                      {course.price === 0 ? "Enroll for Free" : "Buy Now"}
+                      {isEnrolled
+                        ? "Go to Course"
+                        : course.price === 0
+                        ? "Enroll for Free"
+                        : "Buy Now"}
                     </Button>
                     <Typography
                       variant="caption"
@@ -306,13 +359,10 @@ const handleEnroll = async () => {
           </div>
         </Container>
       </section>
-
-      {/* Main Content */}
       <section className="py-12">
         <Container maxWidth="lg">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="lg:col-span-2">
-              {/* What You'll Learn */}
               <Card className="bg-white p-6 mb-8 rounded-lg">
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
                   What you'll learn
@@ -338,8 +388,6 @@ const handleEnroll = async () => {
                   )}
                 </div>
               </Card>
-
-              {/* Curriculum Preview */}
               <Card className="bg-white p-6 rounded-lg">
                 <Typography variant="h6" fontWeight="bold" gutterBottom>
                   Course Content
@@ -357,12 +405,16 @@ const handleEnroll = async () => {
                           <div className="space-y-2">
                             {(section.chapterContent ?? []).map((lesson) => (
                               <div key={lesson._id} className="flex items-center">
-                                {lesson.isPreviewFree && (
+                                {lesson.isPreviewFree || isEnrolled ? (
                                   <PlayCircleFilledIcon
                                     fontSize="small"
                                     color="primary"
                                     sx={{ mr: 1 }}
                                   />
+                                ) : (
+                                  <Typography variant="body2" color="textSecondary" sx={{ mr: 1 }}>
+                                    🔒
+                                  </Typography>
                                 )}
                                 <Typography variant="body2">
                                   {lesson.lectureTitle}
@@ -388,8 +440,6 @@ const handleEnroll = async () => {
                 </div>
               </Card>
             </div>
-
-            {/* Instructor Info */}
             <div className="lg:col-span-1">
               <Card className="bg-white p-6 rounded-lg">
                 <Typography variant="h6" fontWeight="bold" gutterBottom>

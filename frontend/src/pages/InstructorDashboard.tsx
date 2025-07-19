@@ -14,8 +14,13 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import CircularProgress from '@mui/material/CircularProgress';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import { useNavigate } from "react-router-dom";
-
+import { FaArrowLeft } from "react-icons/fa";
 
 // Course interface
 interface Course {
@@ -23,7 +28,7 @@ interface Course {
   title: string;
   description: string;
   instructor: string;
-  instructorId: string;
+  instructorId: string | { _id: string; name: string; email: string };
   price: number | null;
   originalPrice?: number | null;
   duration: string;
@@ -37,16 +42,19 @@ interface Course {
 }
 
 interface Chapter {
-  chapterId: number;
+  _id?: string;
   chapterTitle: string;
   chapterContent: Lecture[];
+  collapsed?: boolean;
 }
 
 interface Lecture {
+  _id?: string;
   lectureTitle: string;
   lectureDuration: string;
   lectureUrl: string;
   isPreviewFree: boolean;
+  videoFile?: File | null;
 }
 
 const InstructorDashboard = () => {
@@ -54,6 +62,12 @@ const InstructorDashboard = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(false); // Loading state
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({ open: false, message: '', severity: 'success' });
 
   // Form data state
   const [formData, setFormData] = useState({
@@ -63,36 +77,41 @@ const InstructorDashboard = () => {
     originalPrice: null as number | null,
     category: "",
     level: "Beginner" as "Beginner" | "Intermediate" | "Advanced",
-    image: "",
+    image: "/placeholder.svg",
     duration: "0 hours",
     whatWillLearn: [] as string[],
     isFeatured: false,
     isPopular: false,
-    instructorId: "", // Will be pulled from localStorage
+    instructorId: "",
   });
 
   // Curriculum state
   const [chapters, setChapters] = useState<
     {
+      _id?: string;
       chapterTitle: string;
       chapterContent: {
+        _id?: string;
         lectureTitle: string;
         lectureDuration: string;
         lectureUrl: string;
         isPreviewFree: boolean;
+        videoFile?: File | null;
       }[];
+      collapsed?: boolean;
     }[]
   >([]);
 
-  const [showPopup, setShowPopup] = useState(false);
-  const [currentChapterIndex, setCurrentChapterIndex] = useState<number | null>(
-    null
-  );
+  const [showPopup, setShowPopup] = useState<"add" | "edit" | false>(false);
+  const [currentChapterIndex, setCurrentChapterIndex] = useState<number | null>(null);
+  const [currentLectureIndex, setCurrentLectureIndex] = useState<number | null>(null);
   const [lectureDetails, setLectureDetails] = useState({
+    _id: "",
     lectureTitle: "",
     lectureDuration: "",
     lectureUrl: "",
     isPreviewFree: false,
+    videoFile: null as File | null,
   });
 
   // Predefined categories
@@ -112,7 +131,7 @@ const InstructorDashboard = () => {
       const user = JSON.parse(userData);
       setFormData((prev) => ({
         ...prev,
-        instructorId: user._id || "",
+        instructorId: user._id || user.id || "",
       }));
     }
   }, []);
@@ -125,12 +144,12 @@ const InstructorDashboard = () => {
         if (!userData) return;
 
         const user = JSON.parse(userData);
-        const instructorId = user.id;
+        const instructorId = user._id || user.id;
 
         const response = await axiosInstance.get(
           `/api/courses/instructor/${instructorId}`
         );
-
+        console.log("Fetched courses:", response.data.courses);
         setCourses(response.data.courses || []);
       } catch (error: any) {
         console.error("Error fetching courses:", error.message);
@@ -143,61 +162,110 @@ const InstructorDashboard = () => {
   // Submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; // Prevent multiple submissions
+
+    setLoading(true); // Start loading
+    setSnackbar({ open: false, message: '', severity: 'success' }); // Reset snackbar
 
     const userData = localStorage.getItem("user");
     const user = userData ? JSON.parse(userData) : null;
     const instructorName = user?.name || "Jane Doe";
-    const instructorId = formData.instructorId || user?.id;
+    const instructorId = formData.instructorId || user?._id || user?.id;
 
     if (!instructorId) {
-      alert("Instructor ID is required.");
+      setLoading(false);
+      setSnackbar({
+        open: true,
+        message: "Instructor ID is required.",
+        severity: 'error',
+      });
       return;
     }
 
-    const url = editingCourse
-      ? `/api/courses/${editingCourse._id}`
-      : "/api/courses";
+    const formDataToSend = new FormData();
+    formDataToSend.append("title", formData.title);
+    formDataToSend.append("description", formData.description);
+    formDataToSend.append("instructorId", instructorId);
+    formDataToSend.append("instructor", instructorName);
+    formDataToSend.append("price", formData.price?.toString() || "0");
+    if (formData.originalPrice) formDataToSend.append("originalPrice", formData.originalPrice.toString());
+    formDataToSend.append("duration", formData.duration);
+    formDataToSend.append("image", formData.image);
+    formDataToSend.append("category", formData.category);
+    formDataToSend.append("level", formData.level);
+    formDataToSend.append("whatWillLearn", JSON.stringify(formData.whatWillLearn.filter((item) => item)));
+    formDataToSend.append("isFeatured", formData.isFeatured.toString());
+    formDataToSend.append("isPopular", formData.isPopular.toString());
+    formDataToSend.append(
+      "curriculum",
+      JSON.stringify(
+        chapters.map((chapter) => ({
+          _id: chapter._id || undefined,
+          chapterTitle: chapter.chapterTitle,
+          chapterContent: chapter.chapterContent.map((lecture) => ({
+            _id: lecture._id || undefined,
+            lectureTitle: lecture.lectureTitle,
+            lectureDuration: lecture.lectureDuration,
+            lectureUrl: lecture.lectureUrl,
+            isPreviewFree: lecture.isPreviewFree,
+            videoFile: lecture.videoFile instanceof File ? true : undefined,
+          })),
+        }))
+      )
+    );
+
+    const videoFiles: File[] = [];
+    chapters.forEach((chapter) => {
+      chapter.chapterContent.forEach((lecture) => {
+        if (lecture.videoFile instanceof File) {
+          videoFiles.push(lecture.videoFile);
+        }
+      });
+    });
+    videoFiles.forEach((file, index) => {
+      formDataToSend.append("lectureVideos", file);
+      console.log(`Appending video ${index + 1}: ${file.name}`);
+    });
+    console.log("FormData entries:", [...formDataToSend.entries()]);
+
+    const url = editingCourse ? `/api/courses/${editingCourse._id}` : "/api/courses";
     const method = editingCourse ? "PUT" : "POST";
 
     try {
       const response = await axiosInstance({
         method,
         url,
-        data: {
-          ...formData,
-          curriculum: chapters.map((chapter) => ({
-            chapterTitle: chapter.chapterTitle,
-            chapterContent: chapter.chapterContent.map((lecture) => ({
-              lectureTitle: lecture.lectureTitle,
-              lectureDuration: lecture.lectureDuration,
-              lectureUrl: lecture.lectureUrl,
-              isPreviewFree: lecture.isPreviewFree,
-            })),
-          })),
-          instructor: instructorName,
-          instructorId: instructorId,
-        },
-        headers: {
-          "Content-Type": "application/json",
-        },
+        data: formDataToSend,
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
+      const updatedCourse = response.data.course;
       if (editingCourse) {
-        setCourses(
-          courses.map((c) =>
-            c._id === editingCourse._id ? response.data.course : c
-          )
-        );
-        setEditingCourse(null);
+        setCourses(courses.map((c) => (c._id === editingCourse._id ? updatedCourse : c)));
+        setChapters(updatedCourse.curriculum.map((chapter: Chapter) => ({
+          _id: chapter._id,
+          chapterTitle: chapter.chapterTitle,
+          chapterContent: Array.isArray(chapter.chapterContent)
+            ? chapter.chapterContent.map((lecture: Lecture) => ({
+                _id: lecture._id,
+                lectureTitle: lecture.lectureTitle,
+                lectureDuration: lecture.lectureDuration,
+                lectureUrl: lecture.lectureUrl || "",
+                isPreviewFree: lecture.isPreviewFree,
+                videoFile: null,
+              }))
+            : [],
+          collapsed: chapter.collapsed || false,
+        })));
       } else {
-        setCourses([...courses, response.data.course]);
+        setCourses([...courses, updatedCourse]);
+        setChapters([]);
       }
 
-      // Reset form
       setFormData({
         title: "",
         description: "",
-        price: 0,
+        price: null,
         originalPrice: null,
         category: "",
         level: "Beginner",
@@ -206,16 +274,92 @@ const InstructorDashboard = () => {
         whatWillLearn: [],
         isFeatured: false,
         isPopular: false,
-        instructorId: user?._id || "",
+        instructorId,
       });
-      setChapters([]);
       setShowCreateForm(false);
+      setEditingCourse(null);
+      setSnackbar({
+        open: true,
+        message: editingCourse ? "Course updated successfully!" : "Course created successfully!",
+        severity: 'success',
+      });
     } catch (err: any) {
-      alert(err.response?.data?.error || "Something went wrong");
+      console.error("Error submitting form:", err.response?.data || err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || "Failed to update course",
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false); // Stop loading
+    }
+  };
+
+  // Update lecture video
+  const handleUpdateLectureVideo = async () => {
+    if (!lectureDetails._id || !lectureDetails.videoFile) {
+      setSnackbar({
+        open: true,
+        message: "Please select a lecture and upload a video file",
+        severity: 'error',
+      });
+      return;
+    }
+
+    setLoading(true); // Start loading
+    setSnackbar({ open: false, message: '', severity: 'success' });
+
+    const formData = new FormData();
+    formData.append("file", lectureDetails.videoFile);
+    console.log("PATCH FormData entries:", [...formData.entries()]);
+
+    try {
+      const response = await axiosInstance.patch(
+        `/api/courses/lectures/${lectureDetails._id}/video`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      const updatedLecture = response.data.lecture;
+      const updatedChapters = [...chapters];
+      if (currentChapterIndex !== null && currentLectureIndex !== null) {
+        updatedChapters[currentChapterIndex].chapterContent[currentLectureIndex] = {
+          ...updatedChapters[currentChapterIndex].chapterContent[currentLectureIndex],
+          lectureUrl: updatedLecture.lectureUrl,
+          videoFile: null,
+        };
+        setChapters(updatedChapters);
+      }
+      setLectureDetails({
+        _id: "",
+        lectureTitle: "",
+        lectureDuration: "",
+        lectureUrl: "",
+        isPreviewFree: false,
+        videoFile: null,
+      });
+      setShowPopup(false);
+      setCurrentChapterIndex(null);
+      setCurrentLectureIndex(null);
+      setSnackbar({
+        open: true,
+        message: "Lecture video updated successfully!",
+        severity: 'success',
+      });
+    } catch (err: any) {
+      console.error("Error updating lecture video:", err.response?.data || err);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || "Failed to update lecture video",
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleEdit = (course: Course) => {
+    console.log("Editing course:", course);
     setFormData({
       title: course.title,
       description: course.description,
@@ -228,20 +372,51 @@ const InstructorDashboard = () => {
       whatWillLearn: course.whatWillLearn || [],
       isFeatured: course.isFeatured || false,
       isPopular: course.isPopular || false,
-      instructorId: course.instructorId,
+      instructorId: typeof course.instructorId === "string" ? course.instructorId : course.instructorId._id,
     });
-    setChapters(course.curriculum || []);
+    setChapters(
+      course.curriculum && Array.isArray(course.curriculum)
+        ? course.curriculum.map((chapter) => ({
+            _id: chapter._id,
+            chapterTitle: chapter.chapterTitle || `Chapter ${chapter._id || chapters.length + 1}`,
+            chapterContent: Array.isArray(chapter.chapterContent)
+              ? chapter.chapterContent.map((lecture) => ({
+                  _id: lecture._id || "",
+                  lectureTitle: lecture.lectureTitle || "",
+                  lectureDuration: lecture.lectureDuration || "",
+                  lectureUrl: lecture.lectureUrl || "",
+                  isPreviewFree: lecture.isPreviewFree || false,
+                  videoFile: null,
+                }))
+              : [],
+            collapsed: false,
+          }))
+        : []
+    );
     setEditingCourse(course);
     setShowCreateForm(true);
   };
 
   const handleDelete = async (courseId: string) => {
     if (!window.confirm("Are you sure you want to delete this course?")) return;
+    setLoading(true);
+    setSnackbar({ open: false, message: '', severity: 'success' });
     try {
       await axiosInstance.delete(`/api/courses/${courseId}`);
       setCourses(courses.filter((c) => c._id !== courseId));
+      setSnackbar({
+        open: true,
+        message: "Course deleted successfully!",
+        severity: 'success',
+      });
     } catch (err: any) {
-      alert("Failed to delete course");
+      setSnackbar({
+        open: true,
+        message: "Failed to delete course",
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -249,17 +424,18 @@ const InstructorDashboard = () => {
   const handleChapter = (action: "add" | "remove", index?: number) => {
     switch (action) {
       case "add":
-        setChapters([
-          ...chapters,
+        setChapters((prevChapters) => [
+          ...(prevChapters || []),
           {
-            chapterTitle: `Chapter ${chapters.length + 1}`,
+            chapterTitle: `Chapter ${(prevChapters || []).length + 1}`,
             chapterContent: [],
+            collapsed: false,
           },
         ]);
         break;
       case "remove":
         if (index !== undefined) {
-          setChapters(chapters.filter((_, i) => i !== index));
+          setChapters((prevChapters) => prevChapters.filter((_, i) => i !== index));
         }
         break;
     }
@@ -267,14 +443,39 @@ const InstructorDashboard = () => {
 
   // Lecture actions
   const handleLecture = (
-    action: "add" | "remove",
+    action: "add" | "edit" | "remove",
     chapterIndex: number,
     lectureIndex?: number
   ) => {
     switch (action) {
       case "add":
         setCurrentChapterIndex(chapterIndex);
-        setShowPopup(true);
+        setCurrentLectureIndex(null);
+        setLectureDetails({
+          _id: "",
+          lectureTitle: "",
+          lectureDuration: "",
+          lectureUrl: "",
+          isPreviewFree: false,
+          videoFile: null,
+        });
+        setShowPopup("add");
+        break;
+      case "edit":
+        if (lectureIndex !== undefined) {
+          const lecture = chapters[chapterIndex].chapterContent[lectureIndex];
+          setCurrentChapterIndex(chapterIndex);
+          setCurrentLectureIndex(lectureIndex);
+          setLectureDetails({
+            _id: lecture._id || "",
+            lectureTitle: lecture.lectureTitle,
+            lectureDuration: lecture.lectureDuration,
+            lectureUrl: lecture.lectureUrl,
+            isPreviewFree: lecture.isPreviewFree,
+            videoFile: null,
+          });
+          setShowPopup("edit");
+        }
         break;
       case "remove":
         if (lectureIndex !== undefined) {
@@ -288,21 +489,49 @@ const InstructorDashboard = () => {
     }
   };
 
-  const addLecture = () => {
+  const saveLecture = () => {
     if (currentChapterIndex === null || !lectureDetails.lectureTitle.trim()) {
-      alert("Please enter a valid lecture title");
+      setSnackbar({
+        open: true,
+        message: "Please enter a valid lecture title",
+        severity: 'error',
+      });
+      return;
+    }
+    if (showPopup === "add" && !lectureDetails.videoFile) {
+      setSnackbar({
+        open: true,
+        message: "Please upload a video file for new lectures",
+        severity: 'error',
+      });
       return;
     }
     const updatedChapters = [...chapters];
-    updatedChapters[currentChapterIndex!].chapterContent.push(lectureDetails);
+    const lecture = {
+      _id: lectureDetails._id || undefined,
+      lectureTitle: lectureDetails.lectureTitle,
+      lectureDuration: lectureDetails.lectureDuration,
+      lectureUrl: lectureDetails.lectureUrl || "",
+      isPreviewFree: lectureDetails.isPreviewFree,
+      videoFile: lectureDetails.videoFile || null,
+    };
+    if (showPopup === "add") {
+      updatedChapters[currentChapterIndex!].chapterContent.push(lecture);
+    } else if (showPopup === "edit" && currentLectureIndex !== null) {
+      updatedChapters[currentChapterIndex!].chapterContent[currentLectureIndex] = lecture;
+    }
     setChapters(updatedChapters);
     setLectureDetails({
+      _id: "",
       lectureTitle: "",
       lectureDuration: "",
       lectureUrl: "",
       isPreviewFree: false,
+      videoFile: null,
     });
     setShowPopup(false);
+    setCurrentChapterIndex(null);
+    setCurrentLectureIndex(null);
   };
 
   const handleLogout = () => {
@@ -310,6 +539,11 @@ const InstructorDashboard = () => {
     localStorage.removeItem("user");
     navigate("/");
     window.location.reload();
+  };
+
+  // Close snackbar
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   return (
@@ -330,7 +564,25 @@ const InstructorDashboard = () => {
             <Button
               variant="outlined"
               color="inherit"
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setShowCreateForm(true);
+                setEditingCourse(null);
+                setFormData({
+                  title: "",
+                  description: "",
+                  price: null,
+                  originalPrice: null,
+                  category: "",
+                  level: "Beginner",
+                  image: "/placeholder.svg",
+                  duration: "0 hours",
+                  whatWillLearn: [],
+                  isFeatured: false,
+                  isPopular: false,
+                  instructorId: formData.instructorId,
+                });
+                setChapters([]);
+              }}
               sx={{
                 borderRadius: "8px",
                 fontWeight: 600,
@@ -392,7 +644,48 @@ const InstructorDashboard = () => {
 
         {/* Form Section */}
         {showCreateForm && (
+          <div>
+              <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setEditingCourse(null);
+                    setFormData({
+                      title: "",
+                      description: "",
+                      price: null,
+                      originalPrice: null,
+                      category: "",
+                      level: "Beginner",
+                      image: "/placeholder.svg",
+                      duration: "0 hours",
+                      whatWillLearn: [],
+                      isFeatured: false,
+                      isPopular: false,
+                      instructorId: formData.instructorId,
+                    });
+                    setChapters([]);
+                  }}
+                  disabled={loading}
+                  sx={{
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    borderColor: "#d1d5db",
+                    color: "#4b50af",
+                    marginBottom: "1.5rem",
+                    "&:hover": {
+                      borderColor: "#9ca3af",
+                      bgcolor: "#f3f4f6",
+                    },
+                  }}
+                >
+                  <FaArrowLeft />
+                   Back
+                </Button>
+            
           <Card className="bg-white p-6 rounded-xl shadow-md">
+            
+            
             <Typography variant="h6" fontWeight="bold" gutterBottom>
               {editingCourse ? "Edit Course" : "Create New Course"}
             </Typography>
@@ -407,8 +700,9 @@ const InstructorDashboard = () => {
                 }
                 margin="normal"
                 required
+                disabled={loading}
                 InputLabelProps={{ shrink: true }}
-                sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
               />
               <TextField
                 fullWidth
@@ -421,7 +715,8 @@ const InstructorDashboard = () => {
                 }
                 margin="normal"
                 required
-                sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                disabled={loading}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
               />
 
               {/* Price Fields */}
@@ -440,7 +735,8 @@ const InstructorDashboard = () => {
                   }
                   margin="normal"
                   fullWidth
-                  sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                  disabled={loading}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
                 <TextField
                   type="number"
@@ -449,13 +745,14 @@ const InstructorDashboard = () => {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      price: Number(e.target.value),
+                      price: e.target.value ? Number(e.target.value) : null,
                     })
                   }
                   margin="normal"
                   fullWidth
                   required
-                  sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                  disabled={loading}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
               </div>
 
@@ -471,7 +768,8 @@ const InstructorDashboard = () => {
                   margin="normal"
                   fullWidth
                   required
-                  sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                  disabled={loading}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 >
                   {categories.map((category) => (
                     <MenuItem key={category} value={category}>
@@ -495,7 +793,8 @@ const InstructorDashboard = () => {
                   }
                   margin="normal"
                   fullWidth
-                  sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                  disabled={loading}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 >
                   <MenuItem value="Beginner">Beginner</MenuItem>
                   <MenuItem value="Intermediate">Intermediate</MenuItem>
@@ -511,7 +810,8 @@ const InstructorDashboard = () => {
                   }
                   margin="normal"
                   required
-                  sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                  disabled={loading}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
                 />
               </div>
 
@@ -525,7 +825,8 @@ const InstructorDashboard = () => {
                 }
                 margin="normal"
                 required
-                sx={{ "& .MuiOutlinedInput.root": { borderRadius: "8px" } }}
+                disabled={loading}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: "8px" } }}
               />
 
               {/* What Will Learn */}
@@ -547,7 +848,8 @@ const InstructorDashboard = () => {
                         });
                       }}
                       size="small"
-                      sx={{ "& .MuiOutlinedInput.root": { borderRadius: "6px" } }}
+                      disabled={loading}
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: "6px" } }}
                     />
                     <Button
                       onClick={() => {
@@ -561,6 +863,7 @@ const InstructorDashboard = () => {
                       }}
                       color="error"
                       size="small"
+                      disabled={loading}
                     >
                       Remove
                     </Button>
@@ -575,6 +878,7 @@ const InstructorDashboard = () => {
                     })
                   }
                   size="small"
+                  disabled={loading}
                   sx={{
                     borderRadius: "6px",
                     borderColor: "#d1d5db",
@@ -592,39 +896,35 @@ const InstructorDashboard = () => {
                   <Typography variant="subtitle2" gutterBottom>
                     Features
                   </Typography>
-                  <label className="inline-flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={formData.isFeatured}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          isFeatured: e.target.checked,
-                        })
-                      }
-                      className="mr-2 h-4 w-4"
-                    />
-                    <span>Is Featured?</span>
-                  </label>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={formData.isFeatured}
+                        onChange={(e) =>
+                          setFormData({ ...formData, isFeatured: e.target.checked })
+                        }
+                        disabled={loading}
+                      />
+                    }
+                    label="Is Featured?"
+                  />
                 </div>
                 <div>
                   <Typography variant="subtitle2" gutterBottom>
                     Visibility
                   </Typography>
-                  <label className="inline-flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={formData.isPopular}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          isPopular: e.target.checked,
-                        })
-                      }
-                      className="mr-2 h-4 w-4"
-                    />
-                    <span>Is Popular?</span>
-                  </label>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={formData.isPopular}
+                        onChange={(e) =>
+                          setFormData({ ...formData, isPopular: e.target.checked })
+                        }
+                        disabled={loading}
+                      />
+                    }
+                    label="Is Popular?"
+                  />
                 </div>
               </div>
 
@@ -634,106 +934,129 @@ const InstructorDashboard = () => {
                   Curriculum
                 </Typography>
                 <div className="space-y-4">
-                  {chapters.map((chapter, chapterIndex) => (
-                    <div
-                      key={chapterIndex}
-                      className="bg-white border rounded-lg mb-4"
-                    >
-                      <div className="flex justify-between items-center p-4 border-b">
-                        <div
-                          className="flex items-center cursor-pointer"
-                          onClick={() => {
-                            const updated = [...chapters];
-                            updated[chapterIndex].collapsed =
-                              !updated[chapterIndex].collapsed;
-                            setChapters(updated);
-                          }}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className={`transition-transform ${
-                              chapter.collapsed ? "-rotate-90" : ""
-                            } mr-2`}
-                          >
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                          </svg>
-                          <span className="font-semibold">
-                            {chapter.chapterTitle}
-                          </span>
-                        </div>
-                        <div className="flex gap-2">
-                          <span className="text-gray-500">
-                            {chapter.chapterContent.length} Lectures
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleChapter("remove", chapterIndex)
-                            }
-                            className="text-red-500 text-sm"
-                          >
-                            X
-                          </button>
-                        </div>
-                      </div>
-                      {!chapter.collapsed && (
-                        <div className="p-4">
-                          {chapter.chapterContent.map(
-                            (lecture, lectureIndex) => (
-                              <div
-                                key={lectureIndex}
-                                className="flex justify-between items-center mb-2"
-                              >
-                                <span>
-                                  {lecture.lectureTitle} -{" "}
-                                  {lecture.lectureDuration} mins -{" "}
-                                  <a
-                                    href={lecture.lectureUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-500 underline"
-                                  >
-                                    Link
-                                  </a>{" "}
-                                  -{" "}
-                                  {lecture.isPreviewFree
-                                    ? "Free Preview"
-                                    : "Paid"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleLecture(
-                                      "remove",
-                                      chapterIndex,
-                                      lectureIndex
-                                    )
-                                  }
-                                  className="text-red-500 text-sm"
-                                >
-                                  X
-                                </button>
-                              </div>
-                            )
-                          )}
+                  {chapters && chapters.length > 0 ? (
+                    chapters.map((chapter, chapterIndex) => (
+                      <div
+                        key={chapter._id || `chapter-${chapterIndex}`}
+                        className="bg-white border rounded-lg mb-4"
+                      >
+                        <div className="flex justify-between items-center p-4 border-b">
                           <div
-                            className="inline-flex bg-gray-100 p-2 rounded cursor-pointer mt-2"
-                            onClick={() => handleLecture("add", chapterIndex)}
+                            className="flex items-center cursor-pointer"
+                            onClick={() => {
+                              const updated = [...chapters];
+                              updated[chapterIndex].collapsed =
+                                !updated[chapterIndex].collapsed;
+                              setChapters(updated);
+                            }}
                           >
-                            + Add Lecture
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={`transition-transform ${
+                                chapter.collapsed ? "-rotate-90" : ""
+                              } mr-2`}
+                            >
+                              <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                            <TextField
+                              value={chapter.chapterTitle}
+                              onChange={(e) => {
+                                const updated = [...chapters];
+                                updated[chapterIndex].chapterTitle = e.target.value;
+                                setChapters(updated);
+                              }}
+                              size="small"
+                              disabled={loading}
+                              sx={{ "& .MuiOutlinedInput-root": { borderRadius: "6px" } }}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="text-gray-500">
+                              {chapter.chapterContent.length} Lectures
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleChapter("remove", chapterIndex)
+                              }
+                              className="text-red-500 text-sm"
+                              disabled={loading}
+                            >
+                              X
+                            </button>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {!chapter.collapsed && (
+                          <div className="p-4">
+                            {chapter.chapterContent.map(
+                              (lecture, lectureIndex) => (
+                                <div
+                                  key={lecture._id || `lecture-${chapterIndex}-${lectureIndex}`}
+                                  className="flex justify-between items-center mb-2"
+                                >
+                                  <span>
+                                    {lecture.lectureTitle} -{" "}
+                                    {lecture.lectureDuration} mins -{" "}
+                                    {lecture.isPreviewFree
+                                      ? "Free Preview"
+                                      : "Paid"}
+                                  </span>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleLecture(
+                                          "edit",
+                                          chapterIndex,
+                                          lectureIndex
+                                        )
+                                      }
+                                      className="text-blue-500 text-sm"
+                                      disabled={loading}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleLecture(
+                                          "remove",
+                                          chapterIndex,
+                                          lectureIndex
+                                        )
+                                      }
+                                      className="text-red-500 text-sm"
+                                      disabled={loading}
+                                    >
+                                      X
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            )}
+                            <div
+                              className="inline-flex bg-gray-100 p-2 rounded cursor-pointer mt-2"
+                              onClick={() => handleLecture("add", chapterIndex)}
+                            >
+                              + Add Lecture
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <Typography className="text-gray-500">
+                      No chapters available. Add a chapter to start.
+                    </Typography>
+                  )}
                   <div
                     className="flex justify-center items-center bg-blue-100 p-2 rounded-lg cursor-pointer"
                     onClick={() => handleChapter("add")}
@@ -748,6 +1071,7 @@ const InstructorDashboard = () => {
                 <Button
                   type="submit"
                   variant="contained"
+                  disabled={loading}
                   sx={{
                     bgcolor: "#4f46e5",
                     "&:hover": { bgcolor: "#3730a3" },
@@ -755,7 +1079,12 @@ const InstructorDashboard = () => {
                     fontWeight: 600,
                   }}
                 >
-                  {editingCourse ? "Update Course" : "Create Course"}
+                  {loading ? (
+                    <>
+                      <CircularProgress size={24} sx={{ color: 'white', mr: 1 }} />
+                      Updating...
+                    </>
+                  ) : editingCourse ? "Update Course" : "Create Course"}
                 </Button>
                 <Button
                   variant="outlined"
@@ -765,7 +1094,7 @@ const InstructorDashboard = () => {
                     setFormData({
                       title: "",
                       description: "",
-                      price: 0,
+                      price: null,
                       originalPrice: null,
                       category: "",
                       level: "Beginner",
@@ -774,10 +1103,11 @@ const InstructorDashboard = () => {
                       whatWillLearn: [],
                       isFeatured: false,
                       isPopular: false,
-                      instructorId: "",
+                      instructorId: formData.instructorId,
                     });
                     setChapters([]);
                   }}
+                  disabled={loading}
                   sx={{
                     borderRadius: "8px",
                     fontWeight: 600,
@@ -794,6 +1124,7 @@ const InstructorDashboard = () => {
               </div>
             </form>
           </Card>
+          </div>
         )}
 
         {/* Courses List */}
@@ -847,6 +1178,7 @@ const InstructorDashboard = () => {
                               color: "#1e40af",
                               "&:hover": { bgcolor: "#93c5fd" },
                             }}
+                            disabled={loading}
                           >
                             Edit
                           </Button>
@@ -862,6 +1194,7 @@ const InstructorDashboard = () => {
                               color: "#be123c",
                               "&:hover": { bgcolor: "#fecaca" },
                             }}
+                            disabled={loading}
                           >
                             Delete
                           </Button>
@@ -881,57 +1214,112 @@ const InstructorDashboard = () => {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Lecture Modal */}
-      <Dialog open={showPopup} onClose={() => setShowPopup(false)}>
-        <DialogTitle>Add Lecture</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="Lecture Title"
-            value={lectureDetails.lectureTitle}
-            onChange={(e) =>
-              setLectureDetails({
-                ...lectureDetails,
-                lectureTitle: e.target.value,
-              })
-            }
-            margin="dense"
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            label="Duration (minutes)"
-            value={lectureDetails.lectureDuration}
-            onChange={(e) =>
-              setLectureDetails({
-                ...lectureDetails,
-                lectureDuration: e.target.value,
-              })
-            }
-            margin="dense"
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            label="Lecture Video URL"
-            value={lectureDetails.lectureUrl}
-            onChange={(e) =>
-              setLectureDetails({
-                ...lectureDetails,
-                lectureUrl: e.target.value,
-              })
-            }
-            margin="dense"
-            variant="outlined"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowPopup(false)}>Cancel</Button>
-          <Button onClick={addLecture}>Add Lecture</Button>
-        </DialogActions>
-      </Dialog>
+        {/* Lecture Modal */}
+        <Dialog open={!!showPopup} onClose={() => setShowPopup(false)}>
+          <DialogTitle>{showPopup === "add" ? "Add Lecture" : "Edit Lecture"}</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="Lecture Title"
+              value={lectureDetails.lectureTitle}
+              onChange={(e) =>
+                setLectureDetails({
+                  ...lectureDetails,
+                  lectureTitle: e.target.value,
+                })
+              }
+              margin="dense"
+              variant="outlined"
+              required
+              disabled={loading}
+            />
+            <TextField
+              fullWidth
+              label="Duration (minutes)"
+              value={lectureDetails.lectureDuration}
+              onChange={(e) =>
+                setLectureDetails({
+                  ...lectureDetails,
+                  lectureDuration: e.target.value,
+                })
+              }
+              margin="dense"
+              variant="outlined"
+              required
+              disabled={loading}
+            />
+            {showPopup === "edit" && lectureDetails.lectureUrl && (
+              <div className="mt-4">
+                <Typography variant="subtitle2" gutterBottom>
+                  Current Video Preview
+                </Typography>
+                <video
+                  controls
+                  src={lectureDetails.lectureUrl}
+                  style={{ width: "100%", maxHeight: "200px", borderRadius: "8px" }}
+                />
+              </div>
+            )}
+            <TextField
+              fullWidth
+              type="file"
+              inputProps={{ accept: "video/*" }}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setLectureDetails({
+                  ...lectureDetails,
+                  videoFile: e.target.files ? e.target.files[0] : null,
+                })
+              }
+              margin="dense"
+              variant="outlined"
+              required={showPopup === "add"}
+              disabled={loading}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={lectureDetails.isPreviewFree}
+                  onChange={(e) =>
+                    setLectureDetails({ ...lectureDetails, isPreviewFree: e.target.checked })
+                  }
+                  disabled={loading}
+                />
+              }
+              label="Free Preview"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowPopup(false)} disabled={loading}>
+              Cancel
+            </Button>
+            {showPopup === "edit" && lectureDetails._id && (
+              <Button onClick={handleUpdateLectureVideo} disabled={loading}>
+                Update Video
+              </Button>
+            )}
+            <Button onClick={saveLecture} disabled={loading}>
+              {showPopup === "add" ? "Add Lecture" : "Update Lecture"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Snackbar for Success/Error Messages */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert
+            onClose={handleCloseSnackbar}
+            severity={snackbar.severity}
+            sx={{ width: '100%' }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
+      </div>
     </div>
   );
 };
