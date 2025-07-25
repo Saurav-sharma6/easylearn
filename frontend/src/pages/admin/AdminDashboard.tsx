@@ -4,6 +4,7 @@ import AdminSidebar from '../../components/admin/AdminSidebar';
 import DashboardMetrics from '../../components/admin/DashboardMetrics';
 import UserManagement from '../../components/admin/UserManagement';
 import CourseManagement from '../../components/admin/CourseManagement';
+import { CircularProgress } from '@mui/material';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -20,13 +21,17 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      console.time(`FetchData_${activeTab}`); // Debug: measure fetch time
       setLoading(true);
       try {
         if (activeTab === 'Dashboard') {
+          console.log('Fetching dashboard data...');
           const [usersResponse, coursesResponse] = await Promise.all([
             axiosInstance.get('/api/users/count'),
             axiosInstance.get('/api/courses/count'),
           ]);
+          console.log('Users count response:', usersResponse.data);
+          console.log('Courses count response:', coursesResponse.data);
           const totalUsers = usersResponse.data.totalUsers || 0;
           const totalCourses = coursesResponse.data.totalCourses || 0;
           const staticAnalytics = {
@@ -35,86 +40,96 @@ const AdminDashboard = () => {
             totalRevenue: 5000.50, // Keep static for now
             monthlyGrowth: 25,     // Keep static for now
           };
-          console.log('Fetched analytics:', staticAnalytics);
           setAnalytics(staticAnalytics);
 
-          console.log('Fetching courses from:', '/api/courses/list');
           const coursesInfo = await axiosInstance.get('/api/courses/list');
-          console.log('Raw Courses response:', coursesInfo.data);
+          console.log('Courses list response:', coursesInfo.data);
           const coursesData = Array.isArray(coursesInfo.data) ? coursesInfo.data : coursesInfo.data.courses || [];
+          console.log(coursesData, "=========")
           setCourses(coursesData);
         } else if (activeTab === 'User Management') {
-          console.log('Fetching users from:', '/api/users/');
-          const usersResponse = await axiosInstance.get('/api/users/');
-          console.log('Raw Users response (full):', usersResponse);
-          if (usersResponse.data && typeof usersResponse.data === 'object') {
-            const usersData = Array.isArray(usersResponse.data) ? usersResponse.data : usersResponse.data.users || [];
-            if (usersData.length === 0) {
-              console.log('No users found in response');
-            }
-            setUsers(usersData);
-          } else {
-            console.error('Unexpected users response format:', usersResponse.data);
-            setUsers([]);
+          console.log('Fetching users from:', '/api/users');
+          const usersResponse = await axiosInstance.get('/api/users', {
+            params: { sort: 'name', limit: 5, page: 1 },
+          });
+          console.log('Users response:', usersResponse.data);
+          const usersData = Array.isArray(usersResponse.data) ? usersResponse.data : usersResponse.data.users || [];
+          if (usersData.length === 0) {
+            console.log('No users found in response');
           }
+          setUsers(usersData);
         } else if (activeTab === 'Course Management') {
           console.log('Fetching courses from:', '/api/courses/list');
-          const coursesResponse = await axiosInstance.get('/api/courses/list');
-          console.log('Raw Courses response:', coursesResponse.data);
+          const coursesResponse = await axiosInstance.get('/api/courses/list', {
+            params: { sort: 'title', limit: 5, page: 1 },
+          });
+          console.log('Courses response:', coursesResponse.data);
           const coursesData = Array.isArray(coursesResponse.data) ? coursesResponse.data : coursesResponse.data.courses || [];
           setCourses(coursesData);
         }
       } catch (err) {
-        if (err.response?.status === 403) {
-          setError('Access denied. Admin privileges required. Check token.');
-        } else if (err.response?.status === 404) {
-          setError('Resource not found. Check API endpoints. (e.g., /api/users/)');
-          console.error('404 Error Details:', err.response);
-        } else {
-          setError(err.message || 'Failed to fetch data');
-          console.error('Dashboard error:', err);
-        }
+        const errorMessage = err.response?.status === 403
+          ? 'Access denied. Admin privileges required.'
+          : err.response?.status === 404
+          ? `Resource not found. Check API endpoint: ${err.config?.url}`
+          : err.message || 'Failed to fetch data';
+        setError(errorMessage);
+        console.error('Dashboard error:', err, 'URL:', err.config?.url);
       } finally {
         setLoading(false);
+        console.timeEnd(`FetchData_${activeTab}`); // Debug: log fetch time
       }
     };
 
     fetchData();
   }, [activeTab]);
 
-  // Handle user deletion
   const handleDeleteUser = async (userId) => {
-  try {
-    await axiosInstance.delete(`/api/users/${userId}`);
-    const usersResponse = await axiosInstance.get('/api/users', {
-      params: { sort: 'name', limit: 5, page: 1 }, // Reset to first page
-    });
-    setUsers(usersResponse.data.users || []);
-    const usersCountResponse = await axiosInstance.get('/api/users/count');
-    setAnalytics((prev) => ({ ...prev, totalUsers: usersCountResponse.data.totalUsers || 0 }));
-  } catch (err) {
-    console.error('Error deleting user:', err);
-    setError('Failed to delete user');
-  }
-};
-// Handle course deletion
-const handleDeleteCourse = async (courseId) => {
-  try {
-    await axiosInstance.delete(`/api/courses/${courseId}`);
-    const coursesResponse = await axiosInstance.get('/api/courses/list', {
-      params: { sort: 'title', limit: 5, page: 1 }, // Reset to first page
-    });
-    setCourses(coursesResponse.data.courses || []);
-    const coursesCountResponse = await axiosInstance.get('/api/courses/count');
-    setAnalytics((prev) => ({ ...prev, totalCourses: coursesCountResponse.data.totalCourses || 0 }));
-  } catch (err) {
-    console.error('Error deleting course:', err);
-    setError('Failed to delete course');
-  }
-};
+    try {
+      await axiosInstance.delete(`/api/users/${userId}`);
+      const usersResponse = await axiosInstance.get('/api/users', {
+        params: { sort: 'name', limit: 5, page: 1 },
+      });
+      setUsers(usersResponse.data.users || []);
+      const usersCountResponse = await axiosInstance.get('/api/users/count');
+      setAnalytics((prev) => ({ ...prev, totalUsers: usersCountResponse.data.totalUsers || 0 }));
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      setError(err.response?.data?.message || 'Failed to delete user');
+    }
+  };
 
-  if (loading) return <div className="text-center p-6 text-black">Loading...</div>;
-  if (error) return <div className="text-center p-6 text-black text-red-500">{error}</div>;
+  const handleDeleteCourse = async (courseId) => {
+    try {
+      await axiosInstance.delete(`/api/courses/${courseId}`);
+      const coursesResponse = await axiosInstance.get('/api/courses/list', {
+        params: { sort: 'title', limit: 5, page: 1 },
+      });
+      setCourses(coursesResponse.data.courses || []);
+      const coursesCountResponse = await axiosInstance.get('/api/courses/count');
+      setAnalytics((prev) => ({ ...prev, totalCourses: coursesCountResponse.data.totalCourses || 0 }));
+    } catch (err) {
+      console.error('Error deleting course:', err);
+      setError(err.response?.data?.message || 'Failed to delete course');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-gray-50 justify-center items-center">
+        <CircularProgress size={40} sx={{ color: '#4f46e5' }} />
+        <span className="ml-4 text-black text-lg">Loading...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-screen bg-gray-50 justify-center items-center">
+        <div className="text-center text-red-500 text-lg">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
