@@ -270,7 +270,7 @@ const CourseForm: React.FC<CourseFormProps> = ({
 
     try {
       const response = await axiosInstance.patch(
-        `/api/lectures/${lectureDetails._id}/video`,
+        `/api/courses/lectures/${lectureDetails._id}/video`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );

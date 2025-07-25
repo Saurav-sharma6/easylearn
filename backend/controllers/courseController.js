@@ -370,7 +370,7 @@ exports.updateCourse = async (req, res) => {
   }
 };
 
-// PATCH /api/lectures/:lectureId/video
+// PATCH /api/courses/lectures/:lectureId/video
 exports.updateLectureVideo = async (req, res) => {
   try {
     console.log("Here Starts!!!!")
@@ -736,15 +736,12 @@ exports.getUserProgress = async (req, res) => {
 };
 
 
-// POST /api/certificates/generate
 exports.generateCertificate = async (req, res) => {
-
   console.log("GENERATE CERTIFICATE - Starting", { body: req.body });
   const { userId, courseId } = req.body;
 
   try {
     // Validate inputs
-    console.log("Validating userId and courseId", { userId, courseId });
     if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(courseId)) {
       console.log("Validation failed: Invalid userId or courseId");
       return res.status(400).json({ error: "Invalid userId or courseId" });
@@ -764,138 +761,221 @@ exports.generateCertificate = async (req, res) => {
 
     // Fetch user and course details
     console.log("Fetching user:", userId);
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('name');
     if (!user) {
       console.log("User not found");
       return res.status(404).json({ error: "User not found" });
     }
     console.log("Fetching course:", courseId);
-    const course = await Course.findById(courseId);
+    const course = await Course.findById(courseId).select('title');
     if (!course) {
       console.log("Course not found");
       return res.status(404).json({ error: "Course not found" });
     }
 
+    // Generate PDF certificate
+    const generatePDF = async () => {
+      console.log("Generating PDF certificate");
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const stream = new streamBuffers.WritableStreamBuffer();
+      doc.pipe(stream);
+
+      try {
+        doc.font('Helvetica');
+        doc.fontSize(24).text("Certificate of Completion", { align: "center" });
+        doc.moveDown(1.5);
+        doc.fontSize(16).text("This certifies that", { align: "center" });
+        doc.moveDown(0.5);
+        doc.fontSize(20).text(user.name, { align: "center" });
+        doc.moveDown(0.5);
+        doc.fontSize(16).text("has successfully completed the course", { align: "center" });
+        doc.moveDown(0.5);
+        doc.fontSize(20).text(course.title, { align: "center" });
+        doc.moveDown(0.5);
+        doc.fontSize(14).text(
+          `Date of Completion: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
+          { align: "center" }
+        );
+        doc.moveDown(0.5);
+        doc.fontSize(14).text("Issued by EasyLearn", { align: "center" });
+        doc.end();
+      } catch (err) {
+        console.error("PDF content generation error:", err);
+        stream.end();
+        throw new Error("Failed to generate PDF content");
+      }
+
+      return new Promise((resolve, reject) => {
+        stream.on('finish', () => {
+          const buffer = stream.getContents();
+          console.log("PDF stream finished, buffer length:", buffer ? buffer.length : "null or false");
+          if (!buffer || buffer === false) {
+            reject(new Error("Failed to generate PDF buffer"));
+          } else {
+            const bufferString = buffer.toString('utf8', 0, 5);
+            if (!bufferString.startsWith('%PDF-')) {
+              console.error("Invalid PDF buffer: Does not start with %PDF-", { bufferString });
+              reject(new Error("Generated PDF is invalid"));
+            }
+            resolve(buffer);
+          }
+        });
+        stream.on('error', (err) => {
+          console.error("PDF stream error:", err);
+          reject(err);
+        });
+      });
+    };
+
     // Check if certificate already exists
     console.log("Checking for existing certificate", { userId, courseId });
-    const existingCertificate = await Certificate.findOne({ userId, courseId });
-    console.log("Existing certificate check result:", existingCertificate);
-    if (existingCertificate) {
-      console.log("Returning existing certificate URL:", existingCertificate.certificateUrl);
-      return res.status(200).json({ certificateUrl: existingCertificate.certificateUrl });
-    }
+    let certificate = await Certificate.findOne({ userId, courseId });
+    let pdfBuffer;
 
-    // Generate PDF certificate
-    console.log("Generating PDF certificate");
-    const doc = new PDFDocument();
-    const stream = new streamBuffers.WritableStreamBuffer();
-    doc.pipe(stream);
-
-    doc.fontSize(24).text("Certificate of Completion", { align: "center" });
-    doc.moveDown();
-    doc.fontSize(16).text(`This certifies that`, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(20).text(user.name, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(16).text(`has successfully completed the course`, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(20).text(course.title, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(14).text(`Date of Completion: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`, { align: "center" });
-    doc.moveDown();
-    doc.fontSize(14).text("Issued by EasyLearn", { align: "center" });
-    doc.end();
-
-    console.log("Waiting for PDF stream to finish");
-    const pdfBuffer = await new Promise((resolve, reject) => {
-      stream.on('finish', () => {
-        const buffer = stream.getContents();
-        console.log("PDF stream finished, buffer length:", buffer ? buffer.length : "null or false");
-        if (!buffer || buffer === false) {
-          reject(new Error("Failed to generate PDF buffer: stream.getContents() returned false"));
+    if (certificate) {
+      console.log("Existing certificate found, URL:", certificate.certificateUrl);
+      // Verify Cloudinary URL accessibility
+      try {
+        console.log("Testing Cloudinary URL accessibility");
+        const response = await axios.head(certificate.certificateUrl, { timeout: 5000 });
+        console.log("Cloudinary URL response status:", response.status);
+        if (response.status === 200) {
+          // URL is accessible, but regenerate PDF for direct download
+          pdfBuffer = await generatePDF();
         } else {
-          resolve(buffer);
-        }
-      });
-      stream.on('error', (err) => {
-        console.error("PDF stream error:", err);
-        reject(err);
-      });
-    });
+          console.log("Cloudinary URL inaccessible, regenerating certificate");
+          pdfBuffer = await generatePDF();
+          // Update Cloudinary and certificate record
+          const uploadResult = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                resource_type: "raw",
+                folder: "easylearn/certificates",
+                format: "pdf",
+                public_id: `certificate_${userId}_${courseId}`,
+                use_filename: true,
+                unique_filename: false,
+                overwrite: true,
+              },
+              (error, result) => {
+                if (error) {
+                  console.error("Cloudinary upload error:", error);
+                  reject(error);
+                } else {
+                  console.log("Cloudinary upload result:", result);
+                  resolve(result);
+                }
+              }
+            );
+            uploadStream.on('error', (err) => {
+              console.error("Cloudinary stream error:", err);
+              reject(err);
+            });
+            uploadStream.end(pdfBuffer);
+          });
 
-    // Upload PDF to Cloudinary
-    console.log("Uploading PDF to Cloudinary");
-    const uploadResult = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: "raw",
-          folder: "easylearn/certificates",
-          format: "pdf",
-          access_mode: "public",
-          filename_override: `${user.name}_${course.title}_Certificate.pdf`,
-          use_filename: true,
-          response_type: "attachment",
-        },
-        (error, result) => {
-          if (error) {
-            console.error("Cloudinary upload error:", error);
-            reject(error);
-          } else {
-            console.log("Cloudinary upload result:", result);
-            resolve(result);
+          if (!uploadResult || !uploadResult.secure_url) {
+            console.error("Cloudinary upload failed: No secure_url", { uploadResult });
+            throw new Error("Cloudinary upload failed");
           }
-        }
-      );
-      uploadStream.on('error', (err) => {
-        console.error("Cloudinary stream error:", err);
-        reject(err);
-      });
-      if (!pdfBuffer || !(pdfBuffer instanceof Buffer)) {
-        console.error("Invalid pdfBuffer:", pdfBuffer);
-        reject(new Error("Invalid pdfBuffer: not a Buffer instance"));
-      }
-      uploadStream.end(pdfBuffer);
-    });
 
-    if (!uploadResult || !uploadResult.secure_url) {
-      console.error("Cloudinary upload failed: No secure_url in response", { uploadResult });
-      throw new Error("Cloudinary upload failed: No secure_url in response");
+          certificate.certificateUrl = uploadResult.secure_url;
+          certificate.issuedAt = new Date();
+          await certificate.save();
+          console.log("Updated certificate:", { certificateId: certificate._id, certificateUrl: certificate.certificateUrl });
+        }
+      } catch (err) {
+        console.error("Cloudinary URL check failed:", err.message);
+        // Regenerate PDF and update Cloudinary
+        pdfBuffer = await generatePDF();
+        const uploadResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              resource_type: "raw",
+              folder: "easylearn/certificates",
+              format: "pdf",
+              public_id: `certificate_${userId}_${courseId}`,
+              use_filename: true,
+              unique_filename: false,
+              overwrite: true,
+            },
+            (error, result) => {
+              if (error) {
+                console.error("Cloudinary upload error:", error);
+                reject(error);
+              } else {
+                console.log("Cloudinary upload result:", result);
+                resolve(result);
+              }
+            }
+          );
+          uploadStream.on('error', (err) => {
+            console.error("Cloudinary stream error:", err);
+            reject(err);
+          });
+          uploadStream.end(pdfBuffer);
+        });
+
+        if (!uploadResult || !uploadResult.secure_url) {
+          console.error("Cloudinary upload failed: No secure_url", { uploadResult });
+          throw new Error("Cloudinary upload failed");
+        }
+
+        certificate.certificateUrl = uploadResult.secure_url;
+        certificate.issuedAt = new Date();
+        await certificate.save();
+        console.log("Updated certificate:", { certificateId: certificate._id, certificateUrl: certificate.certificateUrl });
+      }
+    } else {
+      // Generate new certificate
+      pdfBuffer = await generatePDF();
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "raw",
+            folder: "easylearn/certificates",
+            format: "pdf",
+            public_id: `certificate_${userId}_${courseId}`,
+            use_filename: true,
+            unique_filename: false,
+            overwrite: true,
+          },
+          (error, result) => {
+            if (error) {
+              console.error("Cloudinary upload error:", error);
+              reject(error);
+            } else {
+              console.log("Cloudinary upload result:", result);
+              resolve(result);
+            }
+          }
+        );
+        uploadStream.on('error', (err) => {
+          console.error("Cloudinary stream error:", err);
+          reject(err);
+        });
+        uploadStream.end(pdfBuffer);
+      });
+
+      if (!uploadResult || !uploadResult.secure_url) {
+        console.error("Cloudinary upload failed: No secure_url", { uploadResult });
+        throw new Error("Cloudinary upload failed");
+      }
+
+      certificate = new Certificate({
+        userId,
+        courseId,
+        issuedAt: new Date(),
+        certificateUrl: uploadResult.secure_url,
+      });
+      await certificate.save();
+      console.log("New certificate saved:", { certificateId: certificate._id, certificateUrl: certificate.certificateUrl });
     }
 
-    // Generate signed Cloudinary URL
-    console.log("Generating signed Cloudinary URL");
-    const timestamp = Math.round(new Date().getTime() / 1000);
-    const signedUrl = cloudinary.url(uploadResult.public_id, {
-      resource_type: "raw",
-      sign_url: true,
-      type: "upload",
-      format: "pdf",
-      attachment: true,
-      filename: `${user.name}_${course.title}_Certificate.pdf`,
-      timestamp: timestamp,
-    });
-    console.log("Signed Cloudinary URL:", signedUrl);
-
-    // Save certificate record
-    console.log("Saving certificate to MongoDB");
-    const certificate = new Certificate({
-      userId,
-      courseId,
-      issuedAt: new Date(),
-      certificateUrl: signedUrl,
-    });
-    const savedCertificate = await certificate.save();
-    console.log("Certificate generated and saved:", {
-      userId,
-      courseId,
-      certificateId: savedCertificate._id,
-      certificateUrl: signedUrl,
-    });
-
-    // Serve PDF directly
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${user.name}_${course.title}_Certificate.pdf"`,
+      'Content-Length': pdfBuffer.length,
     });
     res.send(pdfBuffer);
   } catch (error) {
