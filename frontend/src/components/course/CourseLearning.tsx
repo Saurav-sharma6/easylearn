@@ -79,58 +79,6 @@ const CourseLearning = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Generate certificate by calling backend
-  const generateCertificate = async () => {
-    if (!userId || !courseId) {
-      setSnackbar({
-        open: true,
-        message: "Unable to generate certificate: Missing user or course details",
-        severity: "error",
-      });
-      return;
-    }
-
-    try {
-      const response = await axiosInstance.post('/api/courses/certificates/generate', {
-        userId,
-        courseId,
-      }, {
-        headers: {
-          Authorization: `Bearer ${user?.token || ''}`,
-          'Accept': 'application/pdf',
-        },
-        responseType: 'blob', // Expect binary PDF data
-      });
-
-      const blob = response.data;
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      // Trigger download
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${courseTitle}_Certificate.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-
-      setSnackbar({
-        open: true,
-        message: "Certificate downloaded successfully!",
-        severity: "success",
-      });
-    } catch (error: any) {
-      console.error("Certificate generation failed:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      setSnackbar({
-        open: true,
-        message: error.response?.data?.error || error.message || "Failed to generate certificate",
-        severity: "error",
-      });
-    }
-  };
 
   // Generate certificate by calling backend
   const generateCertificate = async () => {
